@@ -1,0 +1,16 @@
+name: microgrid_sim
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pandas
+  - numpy
+  - scipy
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - openpyxl
+  - pip
+  - pip:
+    - nrel-nsrdb

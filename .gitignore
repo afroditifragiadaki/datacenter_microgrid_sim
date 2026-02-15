@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files (Store these locally, not on GitHub)
+data/raw_nsrdb/
+data/raw_lmp/
+data/processed/
+*.csv
+*.xlsx
+
+# Environments and kernels
+.venv/
+env/
+venv/
+ENV/
+.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# OS and IDE files
+.DS_Store
+.vscode/
+.idea/
