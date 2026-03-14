@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/01_build_demand.py)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(python -c \":*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Αφροδίτη Φραγκιαδάκη\\.claude\\projects\\c--datacenter-microgrid-sim\\memory"
+    ]
+  }
+}
