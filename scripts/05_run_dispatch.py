@@ -176,7 +176,7 @@ def plot_dispatch(
     fig.suptitle(
         "ERCOT Datacenter Microgrid — Dispatch Comparison  |  "
         "Dallas-Fort Worth, TX  |  2024\n"
-        "Priority: Solar -> BESS -> Gas  (grid imports not modelled)",
+        "Priority: Solar -> BESS -> Gas  |  Islanded BTM microgrid, no grid connection",
         fontsize=11, fontweight="bold", y=0.99,
     )
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.35)

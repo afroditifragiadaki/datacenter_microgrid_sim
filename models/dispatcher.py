@@ -1,12 +1,14 @@
 """
 Hourly dispatch simulation for the datacenter microgrid.
 
-Dispatch priority stack (lowest → highest cost)
-------------------------------------------------
+Dispatch priority stack
+-----------------------
     1. Solar PV       — zero marginal cost, always taken first
     2. BESS discharge — covers residual deficit after solar
     3. Natural gas    — gap-filler of last resort
-    4. Grid imports   — not modelled yet (P_grid = 0 for now)
+
+This is a fully islanded BTM microgrid — no grid connection is modelled.
+Any unserved energy represents a reliability failure (datacenter outage).
 
 Each hour t follows this logic:
 
