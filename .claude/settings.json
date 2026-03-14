@@ -7,7 +7,9 @@
       "Bash(pip install:*)",
       "Bash(python scripts/02_build_solar.py)",
       "Bash(timeout /t 45 /nobreak)",
-      "Read(//c/Users/E404~1/AppData/Local/Temp/claude/c--datacenter-microgrid-sim/5ac4b09b-600e-4f70-9dca-23e440a26b4c/tasks/**)"
+      "Read(//c/Users/E404~1/AppData/Local/Temp/claude/c--datacenter-microgrid-sim/5ac4b09b-600e-4f70-9dca-23e440a26b4c/tasks/**)",
+      "WebFetch(domain:developer.nrel.gov)",
+      "WebFetch(domain:developer.nlr.gov)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Αφροδίτη Φραγκιαδάκη\\.claude\\projects\\c--datacenter-microgrid-sim\\memory"
