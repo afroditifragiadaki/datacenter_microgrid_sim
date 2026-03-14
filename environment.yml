@@ -15,5 +15,7 @@ dependencies:
   - requests
   - pvlib
   - python-dotenv
+  - streamlit
+  - plotly
   - pip:
     - nrel-nsrdb
