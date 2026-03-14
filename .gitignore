@@ -16,6 +16,16 @@ env/
 venv/
 ENV/
 .env
+*.env
+config/secrets*
+
+# Raw data (large files, fetched at runtime)
+data/raw/
+data/raw_nsrdb/
+data/raw_lmp/
+
+# Plots
+*.png
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints

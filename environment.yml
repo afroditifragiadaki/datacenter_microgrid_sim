@@ -13,5 +13,7 @@ dependencies:
   - openpyxl
   - pip
   - requests
+  - pvlib
+  - python-dotenv
   - pip:
     - nrel-nsrdb
