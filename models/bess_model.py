@@ -67,6 +67,25 @@ DURATION_H: float = 4.0  # default energy-to-power ratio [hours]
                           # (4-hour battery is the current utility-scale standard)
 
 # ---------------------------------------------------------------------------
+# Standard commercial BESS unit (container) specification
+# ---------------------------------------------------------------------------
+# Real installations are built from discrete containerised units rather than
+# one monolithic bank.  Defining a standard unit size:
+#   • allows the grid search to use integer unit counts (N_units)
+#   • gives a realistic upper bound (a single 1,000 MWh bank does not exist)
+#   • enables multi-unit dispatch: different units can be at different SoC
+#     levels, so one group charges from solar surplus while another holds
+#     charge ready for the next deficit hour.
+#
+# Reference: ~4 MWh per container is consistent with utility-scale products
+# such as the Tesla Megapack 2 (3.9 MWh) and CATL EnerC+ (3.44 MWh).
+# We round to 4 MWh for clean arithmetic.
+#
+B_UNIT_MWH:  float = 4.0    # Energy per BESS container unit [MWh]
+P_UNIT_MW:   float = B_UNIT_MWH / DURATION_H   # Power per unit = 1.0 MW
+N_UNITS_MAX: int   = 100    # Maximum realistic number of units for this site
+
+# ---------------------------------------------------------------------------
 # Temperature efficiency model — piecewise-linear PHVAC correction
 # ---------------------------------------------------------------------------
 

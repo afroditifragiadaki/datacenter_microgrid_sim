@@ -1,0 +1,97 @@
+{
+  "version": "1.1",
+  "description": "Indicative datacenter locations and regional parameters for each US ISO/RTO. Lat/lon used for weather (Open-Meteo) and solar (PVWatts V8) API calls. Gas prices from EIA 2024 industrial natural-gas prices by state. CAPEX multipliers relative to ERCOT Texas baseline (NREL ATB 2025 regional cost factors).",
+  "isos": {
+    "ERCOT": {
+      "name": "Electric Reliability Council of Texas",
+      "city": "Dallas-Fort Worth, TX",
+      "state": "TX",
+      "lat": 32.78,
+      "lon": -96.80,
+      "timezone": "US/Central",
+      "pv_tilt_deg": 32.78,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 2.50,
+      "capex_multiplier": 1.00,
+      "notes": "Henry Hub adjacent; lowest gas prices in CONUS. No capacity market — energy-only."
+    },
+    "PJM": {
+      "name": "PJM Interconnection",
+      "city": "Pittsburgh, PA",
+      "state": "PA",
+      "lat": 40.44,
+      "lon": -80.00,
+      "timezone": "US/Eastern",
+      "pv_tilt_deg": 40.44,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 3.20,
+      "capex_multiplier": 1.05,
+      "notes": "Largest ISO by load. Capacity market (RPM). Appalachian basin gas relatively cheap."
+    },
+    "MISO": {
+      "name": "Midcontinent Independent System Operator",
+      "city": "Indianapolis, IN",
+      "state": "IN",
+      "lat": 39.77,
+      "lon": -86.16,
+      "timezone": "US/Central",
+      "pv_tilt_deg": 39.77,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 3.00,
+      "capex_multiplier": 1.03,
+      "notes": "Central MISO footprint. High wind penetration. Chicago citygate gas basis."
+    },
+    "CAISO": {
+      "name": "California Independent System Operator",
+      "city": "Fresno, CA",
+      "state": "CA",
+      "lat": 36.74,
+      "lon": -119.78,
+      "timezone": "US/Pacific",
+      "pv_tilt_deg": 36.74,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 5.00,
+      "capex_multiplier": 1.15,
+      "notes": "Central Valley — best solar in CAISO footprint. SoCal Gas basis. High labor/permitting cost. Duck curve severe."
+    },
+    "SPP": {
+      "name": "Southwest Power Pool",
+      "city": "Oklahoma City, OK",
+      "state": "OK",
+      "lat": 35.47,
+      "lon": -97.52,
+      "timezone": "US/Central",
+      "pv_tilt_deg": 35.47,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 2.80,
+      "capex_multiplier": 1.00,
+      "notes": "High wind and solar resource. ONEOK/Colorado Interstate gas pricing. Low-cost region."
+    },
+    "NYISO": {
+      "name": "New York Independent System Operator",
+      "city": "Albany, NY",
+      "state": "NY",
+      "lat": 42.65,
+      "lon": -73.75,
+      "timezone": "US/Eastern",
+      "pv_tilt_deg": 42.65,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 5.50,
+      "capex_multiplier": 1.18,
+      "notes": "Upstate NY avoids NYC land premiums. Transco Z6 gas basis — expensive. High interconnection cost."
+    },
+    "ISONE": {
+      "name": "ISO New England",
+      "city": "Hartford, CT",
+      "state": "CT",
+      "lat": 41.76,
+      "lon": -72.68,
+      "timezone": "US/Eastern",
+      "pv_tilt_deg": 41.76,
+      "pv_azimuth_deg": 180,
+      "gas_price_per_mmbtu": 6.00,
+      "capex_multiplier": 1.20,
+      "notes": "Most expensive gas in CONUS (Algonquin citygate). Lowest solar CF. High construction costs."
+    }
+  }
+}

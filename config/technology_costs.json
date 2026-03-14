@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "sources": {
+    "solar_pv": "NREL ATB 2025 — Utility PV, Moderate scenario, 2024 USD",
+    "bess": "Lazard LCOS V18.0 (2024) + NREL Storage Futures Study",
+    "gas_rice": "NREL ATB 2025 — Natural Gas CT (RICE proxy), 2024 USD",
+    "common": "Project finance assumptions per methodology document"
+  },
+  "solar_pv": {
+    "capex_per_kw_dc": 950,
+    "opex_per_kw_yr": 10,
+    "lifetime_yr": 30,
+    "degradation_pct_yr": 0.5,
+    "description": "Utility-scale fixed-tilt ground-mount. DC-side nameplate. Includes inverters, racking, balance-of-plant, EPC, interconnection, and soft costs. Apply ISO capex_multiplier."
+  },
+  "bess": {
+    "capex_per_kwh": 280,
+    "capex_per_kw": 0,
+    "opex_per_kw_yr": 5,
+    "lifetime_yr": 15,
+    "augmentation_pct_yr": 2.5,
+    "unit_size_mwh": 4.0,
+    "unit_power_mw": 1.0,
+    "description": "4-hour AC-coupled BESS. $/kWh covers energy capacity (cells + BMS + PCS + EPC). Power electronics embedded in $/kWh for standard 4-hr units. Apply ISO capex_multiplier. Augmentation covers cell degradation replacement."
+  },
+  "gas_rice": {
+    "capex_per_kw": 1100,
+    "opex_fixed_per_kw_yr": 15,
+    "opex_variable_per_mwh": 5,
+    "heat_rate_mmbtu_per_mwh": 9.0,
+    "co2_t_per_mmbtu": 0.0531,
+    "min_load_fraction": 0.30,
+    "lifetime_yr": 20,
+    "description": "Reciprocating Internal Combustion Engine (RICE). Installed cost including genset, fuel system, cooling, emissions controls, EPC. Gas cost modelled separately via ISO gas_price_per_mmbtu. Apply ISO capex_multiplier."
+  },
+  "common": {
+    "discount_rate": 0.08,
+    "project_life_yr": 25,
+    "description": "Unlevered real WACC. Project life used for CRF calculation across all technologies (shorter-lived assets get replacement cost annualized over project life)."
+  }
+}

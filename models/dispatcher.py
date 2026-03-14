@@ -252,23 +252,30 @@ def _summarise(r: pd.DataFrame, S_mw: float, B_mwh: float, G_mw: float) -> dict:
 # Timeseries loader (convenience)
 # ---------------------------------------------------------------------------
 
-def load_timeseries(processed_dir, year: int = 2024) -> pd.DataFrame:
+def load_timeseries(processed_dir, year: int = 2024,
+                    iso_id: str = "ercot") -> pd.DataFrame:
     """
     Load and merge demand, solar, and BESS parameter timeseries into a
     single DataFrame ready for the dispatcher.
 
     Uses positional alignment (all three are 8784-row 2024 annual series).
     The demand index (tz-naive CST) is used as the reference index.
+
+    Parameters
+    ----------
+    iso_id : ISO prefix for filenames (e.g. "ercot", "pjm", "caiso").
+             Case-insensitive. Defaults to "ercot" for backward compatibility.
     """
     import pandas as pd
     from pathlib import Path
-    d = Path(processed_dir)
+    d   = Path(processed_dir)
+    pfx = iso_id.lower()
 
-    demand    = pd.read_csv(d / f"ercot_demand_{year}.csv",
+    demand    = pd.read_csv(d / f"{pfx}_demand_{year}.csv",
                             index_col="datetime", parse_dates=True)
-    solar     = pd.read_csv(d / f"ercot_solar_{year}.csv",
+    solar     = pd.read_csv(d / f"{pfx}_solar_{year}.csv",
                             index_col="datetime", parse_dates=True)
-    bess_par  = pd.read_csv(d / f"ercot_bess_params_{year}.csv",
+    bess_par  = pd.read_csv(d / f"{pfx}_bess_params_{year}.csv",
                             index_col="datetime", parse_dates=True)
 
     # Validate lengths

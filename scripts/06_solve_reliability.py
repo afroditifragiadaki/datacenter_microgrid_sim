@@ -53,8 +53,12 @@ OUT_DIR = PROJECT_ROOT / "data" / "processed"
 # ---------------------------------------------------------------------------
 # Search grid
 # ---------------------------------------------------------------------------
-S_GRID = np.arange(0,   301, 25)    # Solar DC capacity [MW]: 0 to 300 in steps of 25
-B_GRID = np.arange(0,  1001, 100)   # Battery capacity [MWh]: 0 to 1000 in steps of 100
+from models.bess_model import B_UNIT_MWH, N_UNITS_MAX
+
+S_GRID  = np.arange(0, 301, 25)          # Solar DC capacity [MW]: 0–300 step 25
+N_GRID  = np.arange(0, N_UNITS_MAX + 1,  # Number of BESS units: 0–100 step 10
+                    10, dtype=int)
+B_GRID  = N_GRID * B_UNIT_MWH            # Battery MWh equivalent (0–400 MWh)
 
 # G=1e6 effectively means "unconstrained gas" for finding G_min
 G_INFINITE = 1_000_000.0
@@ -92,15 +96,17 @@ def run_grid_search(ts: pd.DataFrame) -> pd.DataFrame:
     rows = []
     t0 = time.time()
 
-    print(f"  Grid: S in {S_GRID.tolist()}")
-    print(f"        B in {B_GRID.tolist()}")
+    print(f"  Grid: S in {S_GRID.tolist()} MW")
+    print(f"        N in {N_GRID.tolist()} units  ({B_UNIT_MWH:.0f} MWh/unit)")
+    print(f"        B in {B_GRID.tolist()} MWh")
     print(f"  Total combinations: {n_total}")
     print()
 
-    for i, (S, B) in enumerate(product(S_GRID, B_GRID)):
+    for i, (S, (N, B)) in enumerate(product(S_GRID, zip(N_GRID, B_GRID))):
         G_min, gas_hrs = find_min_G(float(S), float(B), ts)
         rows.append({
             "S_mw":         S,
+            "N_units":      int(N),
             "B_mwh":        B,
             "G_min_mw":     round(G_min, 2),
             "gas_hours_yr": round(gas_hrs, 0),
@@ -169,8 +175,9 @@ def main():
     for _, row in s150.iterrows():
         g_b0 = s150[s150.B_mwh == 0]["G_min_mw"].values[0]
         reduction = g_b0 - row["G_min_mw"]
-        print(f"    B={row['B_mwh']:>4.0f} MWh  ->  G_min={row['G_min_mw']:>5.1f} MW  "
-              f"(saves {reduction:>4.1f} MW vs B=0)")
+        print(f"    N={row['N_units']:>3.0f} units ({row['B_mwh']:>4.0f} MWh)  ->  "
+              f"G_min={row['G_min_mw']:>5.1f} MW  "
+              f"(saves {reduction:>4.1f} MW vs N=0)")
 
     # Minimum G achievable (with large S and B)
     min_G = surface["G_min_mw"].min()
@@ -178,17 +185,16 @@ def main():
     print(f"\n  Minimum achievable G_min: {min_G:.1f} MW")
     print(f"    at S={min_G_row['S_mw']:.0f} MW, B={min_G_row['B_mwh']:.0f} MWh")
 
-    # Iso-G lines: what (S, B) combinations keep G_min <= threshold?
-    print(f"\n  Pareto frontier — min S+B/4 to keep G_min <= threshold:")
+    # Iso-G lines: what (S, N) combinations keep G_min <= threshold?
+    print(f"\n  Pareto frontier — min S+N to keep G_min <= threshold:")
     for G_thresh in [60, 50, 40, 30, 20, 10]:
         feasible = surface[surface["G_min_mw"] <= G_thresh]
         if feasible.empty:
             print(f"    G <= {G_thresh:>2.0f} MW:  not achievable in search space")
             continue
-        # Pareto-optimal: minimize S (proxy for cost) — fix B, find min S
         best = feasible.sort_values("S_mw").iloc[0]
         print(f"    G <= {G_thresh:>2.0f} MW:  e.g. S={best['S_mw']:>3.0f} MW, "
-              f"B={best['B_mwh']:>4.0f} MWh  "
+              f"N={best['N_units']:>3.0f} units ({best['B_mwh']:>4.0f} MWh)  "
               f"(gas runs {best['gas_hours_yr']:.0f} hrs/yr)")
 
     # 5. Plot

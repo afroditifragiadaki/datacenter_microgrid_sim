@@ -1,53 +1,51 @@
-# 50 MW Datacenter Microgrid Simulation
+# 50 MW Datacenter Microgrid Simulator
 
 A Python simulation framework that models the energy reliability and economics of a
-hybrid Solar + BESS + Gas microgrid serving a 50 MW IT load, fully islanded from the
-grid (behind-the-meter, no grid imports). The first implementation targets ERCOT
-(Dallas-Fort Worth, TX) with 2024 as the simulation year.
+hybrid **Solar PV + BESS + Natural Gas** microgrid serving a 50 MW IT load, fully
+islanded from the grid (behind-the-meter, no grid imports). An interactive Streamlit
+dashboard allows users to select any US ISO/RTO and run the full pipeline on demand.
+
+**Current status:** ERCOT (Dallas-Fort Worth, TX) pilot complete. Multi-ISO expansion
+framework built; pipelines for PJM, MISO, CAISO, SPP, NYISO, ISONE pending.
 
 ---
 
 ## Project Objectives
 
 - **Reliability** — guarantee zero unserved energy at every hour across all 8,784 hours
-  of 2024 (leap year); identify the minimum gas capacity G required for any (Solar, BESS)
-  combination.
-- **Economic optimisation** — minimise system Levelised Cost of Energy (sLCOE) across
-  all viable (S, B, G) configurations.
-- **Extensibility** — methodology designed to be replicated across PJM, MISO, CAISO,
-  SPP, NYISO once the ERCOT baseline is validated.
+  of 2024 (leap year); find the minimum gas capacity G required for any (Solar, BESS) pair.
+- **Economics** — minimise system Levelised Cost of Energy (sLCOE, $/MWh) across all
+  viable (S, B, G) configurations using unsubsidised NREL ATB 2025 / Lazard 18.0 costs.
+- **Multi-ISO** — replicate methodology across PJM, MISO, CAISO, SPP, NYISO, ISONE using
+  a single ISO registry; each region has its own location, gas price, and CAPEX multiplier.
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
-50 MW IT Load
-    |
-    v
-[Demand model]  PUE(T) * 50 MW  -->  total_load_mw  (56-68 MW, 8,784 hrs)
-    |
-    v
-[Dispatcher]  priority stack: Solar -> BESS -> Gas
-    |                                              |
-[Solar PV]  PVWatts V8 TMY CF x S_mw             |
-[BESS]      4-hr Li-ion, SoC [20-100%], T-adj    |
-[Gas RICE]  gap-filler: P_gas = min(G, unmet)    |
-    |
-    v
-[Reliability solver]  G_min(S, B) = max(gas_gen_t) | G=inf
-    |
-    v
-[sLCOE optimiser]   min sLCOE = total_annual_cost / demand_MWh
+50 MW IT Load (constant)
+        │
+        ▼
+[Demand model]  PUE(T_ambient) × 50 MW  →  total_load_mw (56–68 MW, 8,784 hrs)
+        │
+        ▼
+[Dispatcher]  greedy priority stack per hour
+   ├── ☀️  Solar PV    →  S_mw × solar_cf_t           (PVWatts V8 TMY)
+   ├── 🔋  BESS        →  discharge to cover deficit  (4-hr Li-ion, η_temp-adjusted)
+   └── 🔥  Gas RICE    →  P_gas = min(G, unmet)       (gap-filler)
+        │
+        ▼
+[Reliability solver]   G_min(S, B) = max(gas_gen_t) | G=∞   (grid search)
+        │
+        ▼
+[sLCOE optimiser]      min sLCOE = total_annual_cost / demand_MWh
+        │
+        ▼
+[Streamlit dashboard]  ISO selector · live dispatch · reliability surface · sLCOE surface
 ```
 
-Dispatch priority (greedy, hourly):
-1. Solar PV — zero marginal cost, always taken first
-2. BESS discharge — covers residual deficit after solar
-3. Natural gas (RICE) — gap-filler of last resort
-4. Unserved energy — any remaining deficit (reliability failure)
-
-No grid connection is modelled. This is a fully islanded BTM microgrid.
+No grid connection is modelled. Unserved energy = reliability failure (datacenter outage).
 
 ---
 
@@ -55,293 +53,242 @@ No grid connection is modelled. This is a fully islanded BTM microgrid.
 
 ```
 datacenter_microgrid_sim/
-|-- models/
-|   |-- demand_model.py       PUE(T) model; load timeseries builder
-|   |-- solar_model.py        pvlib fallback (not used in primary pipeline)
-|   |-- bess_model.py         BESS state equation; temperature efficiency
-|   |-- gas_model.py          RICE dispatch; fuel consumption; CO2 emissions
-|   |-- dispatcher.py         Hourly dispatch loop; timeseries loader
-|   |-- lcoe_model.py         Financial parameters; annualised cost functions; sLCOE
-|
-|-- scripts/
-|   |-- 01_build_demand.py    Fetch weather (Open-Meteo); build 8,784-hr load timeseries
-|   |-- 02_build_solar.py     PVWatts V8 API; TMY->2024 expansion; solar_cf timeseries
-|   |-- 03_build_bess.py      Temperature-adjusted BESS efficiency timeseries
-|   |-- 04_build_gas.py       Gas model characterisation; load duration curve; sizing
-|   |-- 05_run_dispatch.py    Multi-config dispatch validation; KPI comparison
-|   |-- 06_solve_reliability.py  G_min(S,B) surface; Pareto frontier
-|   |-- 07_optimize_slcoe.py  sLCOE surface; optimum; sensitivity analysis
-|
-|-- data/
-|   |-- raw/                  Cached API responses (gitignored)
-|   |-- processed/            All model outputs (CSVs + PNGs)
-|
-|-- config/
-|   |-- secrets.env           API keys (gitignored)
-|
-|-- notebooks/                Exploratory analysis (Jupyter)
-|-- environment.yml           Conda environment
+├── models/
+│   ├── demand_model.py       PUE(T) piecewise-linear model; load timeseries
+│   ├── solar_model.py        pvlib fallback (not used in primary pipeline)
+│   ├── bess_model.py         BESS state equation; temperature efficiency; unit sizing
+│   ├── gas_model.py          RICE dispatch; fuel cost; CO₂ emissions
+│   ├── dispatcher.py         8,784-hour greedy dispatch loop; ISO-aware timeseries loader
+│   ├── lcoe_model.py         CRF; annualised cost functions; sLCOE formula
+│   ├── iso_registry.py       ISO lookup table API; regional cost helpers
+│   └── pipeline.py           On-demand pipeline orchestrator for any ISO
+│
+├── scripts/
+│   ├── 01_build_demand.py    Open-Meteo weather fetch; PUE model; load timeseries
+│   ├── 02_build_solar.py     PVWatts V8 API; TMY→2024 expansion; solar_cf timeseries
+│   ├── 03_build_bess.py      Temperature-adjusted η_temp timeseries
+│   ├── 04_build_gas.py       Gas model characterisation; load duration curve
+│   ├── 05_run_dispatch.py    Multi-config dispatch validation; KPI comparison
+│   ├── 06_solve_reliability.py  G_min(S, N) surface; Pareto frontier
+│   └── 07_optimize_slcoe.py  sLCOE surface; optimum; sensitivity analysis
+│
+├── config/
+│   ├── iso_registry.json     7 ISO/RTOs: location, gas price, CAPEX multiplier
+│   ├── technology_costs.json National CAPEX/OPEX baselines (Solar, BESS, Gas RICE)
+│   └── secrets.env           NREL API key (gitignored — never commit)
+│
+├── data/
+│   ├── raw/                  Cached API responses (gitignored)
+│   └── processed/            Model outputs: {iso}_demand/solar/bess/reliability/slcoe CSVs
+│
+├── dashboard.py              Streamlit multi-ISO dashboard
+├── requirements.txt          pip dependencies for deployment
+└── environment.yml           Conda environment (full pinned versions)
 ```
 
 ---
 
-## Models
+## Methodology
 
-### Demand Model (`models/demand_model.py`)
+### 1. Demand Timeseries
 
-IT load is constant at 50 MW. Total facility load scales with the Power Usage
-Effectiveness (PUE), which is a piecewise-linear function of ambient temperature:
+Temperature from **Open-Meteo Historical API** (ERA5, free, no key). PUE modelled as a
+piecewise-linear function of ambient temperature:
 
-| Temperature (°C) | PUE  | Cooling mode              |
-|------------------|------|---------------------------|
-| <= 10            | 1.12 | Free cooling / economizer |
-| 25               | 1.20 | Standard liquid cooling   |
-| 35               | 1.32 | Hybrid / assisted         |
-| >= 60            | 1.45 | Max mechanical chilling   |
-
-Values between knots are linearly interpolated (`np.interp`).
+| T (°C) | ≤ 10 | 25 | 35 | ≥ 60 |
+|--------|------|-----|-----|------|
+| PUE    | 1.12 | 1.20 | 1.32 | 1.45 |
 
 ```
-total_load_mw = PUE(T_ambient) * 50 MW
+total_load_t = PUE(T_t) × 50 MW
 ```
 
-2024 results (DFW): avg PUE = 1.190, load range 56.0–67.6 MW,
-annual demand = 522,524 MWh.
+ERCOT 2024: avg PUE 1.190, load 56.0–67.6 MW, annual demand **522,524 MWh**.
 
-Temperature data: Open-Meteo historical archive (ERA5), UTC, 2024.
+### 2. Solar PV (PVWatts V8)
 
-### Solar PV Model (`scripts/02_build_solar.py`)
+Hourly capacity factors from **NREL PVWatts V8 API** (NSRDB TMY data). Key parameters:
+Premium module (γ = −0.35%/°C), fixed-tilt at latitude°, south-facing, 15% losses,
+96% inverter efficiency, 1.2 DC:AC ratio. Tilt is ISO-specific (≈ latitude).
 
-Uses the **NREL PVWatts V8 API** with NSRDB TMY data for DFW (32.78°N, 96.80°W).
+TMY 8,760 hours expanded to 8,784 (leap year) by duplicating Feb 28 as Feb 29.
 
-| Parameter       | Value                          |
-|-----------------|--------------------------------|
-| Module type     | Premium (N-type, γ = -0.35%/°C)|
-| Array type      | Fixed open rack                |
-| Tilt / Azimuth  | 32.78° / 180° (south-facing)   |
-| Losses          | 15%                            |
-| Inverter eff.   | 96%                            |
-| DC:AC ratio     | 1.2                            |
-| NSRDB station   | 702381.csv (2.2 km from site)  |
+ERCOT 2024: annual CF **17.05%**, peak CF 83.3%.
+
+### 3. BESS Model
+
+4-hour Li-ion battery, modelled as **N discrete standard units** (4 MWh / 1 MW each).
 
 ```
-P_solar_t = S_mw * solar_cf_t
+E_t = E_{t-1} + P_ch_t × (η_ch × η_temp_t) − P_dis_t / (η_temp_t × η_dis)
+
+η_ch = η_dis = 0.96
+SoC: 20% ≤ E_t ≤ B_mwh
+Power: P ≤ B_mwh / 4  (4-hour rating)
 ```
 
-2024 CF (TMY expanded to 8,784 hrs): annual mean = 17.05%, peak = 83.3%.
-PVWatts returns 8,760 TMY hours; Feb 29 is inserted by duplicating Feb 28.
+`η_temp` is a piecewise-linear temperature modifier capturing HVAC parasitic loads:
+T = [−10, 0, 15, 35, 45, 60°C] → η = [0.94, 0.97, 1.00, 1.00, 0.96, 0.92].
 
-### BESS Model (`models/bess_model.py`)
+### 4. Gas (RICE)
 
-4-hour Li-ion battery. State equation per hour:
-
-```
-E_t = E_{t-1} + P_ch_t * (eta_ch * eta_temp_t)
-                - P_dis_t / (eta_temp_t * eta_dis)
-
-Constraints:
-  0.20 * B <= E_t <= B          (SoC limits)
-  P_ch_t, P_dis_t <= B / 4     (4-hour power rating)
-```
-
-- `eta_ch = eta_dis = 0.96`
-- `eta_temp` — temperature-adjusted HVAC parasitic modifier:
-
-| T (°C)  | -10  |  0   |  15  |  35  |  45  |  60  |
-|---------|------|------|------|------|------|------|
-| eta_temp| 0.94 | 0.97 | 1.00 | 1.00 | 0.96 | 0.92 |
-
-2024 results (DFW): mean eta_temp = 0.9961, cold hours = 2,451 (28%), optimal = 6,061 (69%).
-
-### Gas Model (`models/gas_model.py`)
-
-Technology: Natural Gas Reciprocating Engine (RICE).
-Chosen for: better part-load efficiency, low minimum stable load (30%), fast warm-start.
+Reciprocating Internal Combustion Engine. Gap-filler dispatch:
 
 ```
-P_gas_t = min(G_mw, unmet_demand_t)
-Fuel_t  = P_gas_t * 9.0  [MMBtu/h]
+P_gas_t = min(G_mw, unmet_t)
 ```
 
-| Parameter         | Value                          |
-|-------------------|--------------------------------|
-| Heat rate         | 9.0 MMBtu/MWh (HHV, full load) |
-| Thermal efficiency| 37.9%                          |
-| Gas price         | $2.50/MMBtu (EIA 2024, Texas)  |
-| Fuel cost         | $22.50/MWh                     |
-| CO2 factor        | 0.0531 tCO2/MMBtu = 0.478 tCO2/MWh |
-| Min stable load   | 30% of G                       |
+Heat rate 9.0 MMBtu/MWh. Gas price is ISO-specific ($2.50/MMBtu ERCOT → $6.00 ISONE).
 
-### Dispatcher (`models/dispatcher.py`)
+### 5. Reliability Solver
 
-Greedy hourly priority stack. For each hour t:
-
-- **Surplus** (solar > load): charge BESS up to power/SoC limits; curtail remainder.
-- **Deficit** (solar < load): discharge BESS up to power/SoC limits; gas fills the rest.
-
-No grid imports. Unserved energy = reliability failure (datacenter outage).
-
-### Financial Model (`models/lcoe_model.py`)
-
-All costs are **unsubsidized** (pre-incentive), consistent with Lazard LCOE+ 18.0.
-
-| Component  | CAPEX           | Fixed O&M       | Variable O&M   | Life  | Source            |
-|------------|-----------------|-----------------|----------------|-------|-------------------|
-| Solar PV   | $950/kW DC      | $16/kW/yr       | —              | 30 yr | NREL ATB 2025     |
-| BESS 4-hr  | $300/kWh        | $8/kW-power/yr  | $0.50/MWh dis. | 15 yr | NREL ATB 2025     |
-| Gas RICE   | $1,200/kW       | $20/kW/yr       | $7.00/MWh      | 25 yr | Lazard LCOE+ 18.0 |
-
-Project: 25-year life, 7% nominal WACC, CRF = 8.58%/yr.
-BESS replacement at year 15 at 85% of initial capex (technology learning).
-ITC (30% IRA 2022) tracked separately; not applied to baseline.
+For fixed (S, B), minimum G for zero outages is analytically exact:
 
 ```
-sLCOE = (C_solar + C_bess + C_gas) / Annual_demand_MWh
+G_min(S, B) = max_t(gas_gen_t)  when G = ∞
 ```
 
----
+Grid search: S ∈ [0–300 MW step 25], N ∈ [0–100 units step 5] → ~273 combinations, ~10s.
 
-## Pipeline
+**Key ERCOT finding:** G_min ≈ 67 MW regardless of solar/BESS — a 24/7 islanded datacenter
+always needs gas sized to peak load. Solar/BESS reduce gas *runtime*, not gas *capacity*.
 
-Run scripts in order. Each step outputs to `data/processed/`.
+| Configuration | Gas hrs/yr | Gas fraction |
+|---|---|---|
+| Gas-only | 8,784 | 100% |
+| S=150 MW, N=0 | 6,913 | 79% |
+| S=150 MW, N=25 (100 MWh) | 5,870 | 67% |
+| S=300 MW, N=100 (400 MWh) | 2,629 | 30% |
 
-```bash
-# 0. Install environment
-conda env create -f environment.yml
-conda activate microgrid_sim
+### 6. sLCOE Optimiser
 
-# 1. Demand timeseries (Open-Meteo weather + PUE model)
-python scripts/01_build_demand.py
-
-# 2. Solar timeseries (PVWatts V8 API — requires NREL API key)
-python scripts/02_build_solar.py
-
-# 3. BESS efficiency timeseries
-python scripts/03_build_bess.py
-
-# 4. Gas model characterisation and load duration curve
-python scripts/04_build_gas.py
-
-# 5. Dispatch validation across multiple (S, B, G) configurations
-python scripts/05_run_dispatch.py
-
-# 6. Reliability surface: G_min(S, B) for zero outages
-python scripts/06_solve_reliability.py
-
-# 7. sLCOE optimisation: minimum cost (S, B, G) configuration
-python scripts/07_optimize_slcoe.py
+```
+sLCOE = (CAPEX_ann + OPEX_fixed + OPEX_var + Fuel) / Annual_demand_MWh
 ```
 
-On Windows, prefix with `set PYTHONIOENCODING=utf-8 &&` to avoid encoding errors.
+All costs unsubsidised. 8% WACC, 25-year project life, CRF applied per technology lifetime.
+BESS augmentation (cell replacement) modelled at 2.5%/yr of capex.
 
 ---
 
 ## Key Results (ERCOT 2024)
 
-### Demand
-- Annual demand: **522,524 MWh/yr**
-- Load range: **56.0 – 67.6 MW** (avg 59.5 MW)
-- Avg PUE: **1.190**
-
-### Solar
-- Annual capacity factor: **17.05%** (TMY, DFW, fixed-tilt)
-- Peak CF: **83.3%**
-
-### Reliability Surface
-The minimum gas capacity G required for zero outages is **essentially independent of
-solar and battery size** within the modelled range (S ≤ 300 MW, B ≤ 1,000 MWh):
-
-- G_min baseline (S=0, B=0): **67.6 MW** (= peak load)
-- G_min at S=300 MW, B=1,000 MWh: **66.5 MW** (only 1.1 MW reduction)
-
-**Why:** The datacenter runs 24/7 at 56–68 MW. At night, solar = 0. Even 1,000 MWh
-of battery (usable 800 MWh) barely covers one night at minimum load. Gas must therefore
-always be sized close to peak load regardless of solar/BESS scale.
-
-However, solar + BESS dramatically reduce **gas runtime** (and thus fuel cost):
-
-| Configuration       | Gas hrs/yr | Gas fraction |
-|---------------------|-----------|--------------|
-| S=0, B=0 (gas-only) | 8,784     | 100%         |
-| S=150 MW, B=0       | 6,913     | 79%          |
-| S=150 MW, B=400 MWh | 5,870     | 67%          |
-| S=300 MW, B=1,000 MWh | 2,629   | 30%          |
-
-### sLCOE Optimisation (unsubsidized baseline)
-- **Minimum sLCOE: $45.42/MWh — gas-only (S=0, B=0, G=67.6 MW)**
-- Adding solar increases sLCOE under current unsubsidized assumptions
-
-**Why solar doesn't pencil out (yet):**
-Solar LCOE at 17% CF and $950/kW ≈ **$65/MWh**. Since G_min is fixed, solar only
-avoids gas *fuel* (not gas capex/fixed O&M). Gas variable cost = **$29.50/MWh**.
-Net cost of solar = $65 − $29.50 = **+$35/MWh penalty**.
-
-**Levers that change the result:**
-- **ITC (30% IRA 2022):** solar capex → $665/kW effective → LCOE ~$49/MWh (still above $29.50)
-- **Higher gas price ($5/MMBtu):** fuel savings → $52.50/MWh → solar becomes competitive
-- **Single-axis tracking:** CF → 23% → solar LCOE → ~$50/MWh
-- **Carbon pricing:** adds cost to gas, improves renewable economics
+| Metric | Value |
+|---|---|
+| Annual demand | 522,524 MWh |
+| Peak load | 67.6 MW |
+| Solar CF (TMY, DFW) | 17.05% |
+| G_min (any S, B) | ≈ 67 MW |
+| Gas-only sLCOE | ~$45/MWh |
+| Unconstrained optimum | Gas-only (S=0, B=0) — see Challenges |
 
 ---
 
-## Configuration
+## Challenges & Known Issues
 
-### API Keys (`config/secrets.env`)
-```
-NREL_API_KEY=<your_key>
-NREL_EMAIL=<your_email>
-```
-Obtain a free key at [developer.nrel.gov](https://developer.nrel.gov/signup/).
-This file is gitignored; never commit credentials.
+### 1. Gas-only is the unconstrained optimum
 
-### Key Constants
+Under unsubsidised assumptions, the sLCOE optimiser selects **S=0, B=0** (gas-only).
+This is technically correct: solar at 17% CF costs ~$65/MWh LCOE, but only avoids gas
+*fuel* (~$22.50/MWh) since gas capacity must remain at ~67 MW regardless. Net solar
+penalty: ~$42/MWh over gas dispatch.
 
-| File                  | Parameter                   | Default        |
-|-----------------------|-----------------------------|----------------|
-| `models/demand_model.py` | IT load                  | 50 MW          |
-| `models/demand_model.py` | PUE knots                | see table above|
-| `models/gas_model.py`   | Heat rate                 | 9.0 MMBtu/MWh  |
-| `models/gas_model.py`   | Gas price                 | $2.50/MMBtu    |
-| `models/lcoe_model.py`  | Discount rate             | 7%             |
-| `models/lcoe_model.py`  | Solar CAPEX               | $950/kW DC     |
-| `models/lcoe_model.py`  | BESS CAPEX                | $300/kWh       |
-| `models/lcoe_model.py`  | Gas CAPEX                 | $1,200/kW      |
-| `scripts/06_solve_reliability.py` | Solar grid  | 0–300 MW, step 25 |
-| `scripts/06_solve_reliability.py` | BESS grid   | 0–1,000 MWh, step 100 |
+**Fix in progress:** add a minimum renewable fraction constraint (≥ 30% of MWh from
+solar/BESS) to the optimiser. Running with ITC (30%) and/or higher gas price (CAISO/ISONE)
+also makes solar competitive.
 
----
+### 2. Streamlit Community Cloud deployment pending
 
-## Data Sources
+Dashboard runs correctly locally. Cloud deployment is blocked by:
+- Missing transitive dependencies in `requirements.txt`
+- NREL API key not yet injected via Streamlit Cloud Secrets UI
+- On-demand pipeline runner uses blocking API calls that may exceed Cloud timeouts
 
-| Data               | Source                         | Coverage          |
-|--------------------|--------------------------------|-------------------|
-| Ambient temperature| Open-Meteo historical (ERA5)   | DFW, 2024, hourly |
-| Solar irradiance   | NREL PVWatts V8 / NSRDB TMY   | DFW, TMY          |
-| Gas price          | EIA 2024 Texas Henry Hub       | Annual avg        |
-| Capital costs      | NREL ATB 2025 (moderate)       | 2025 USD          |
-| LCOE benchmarks    | Lazard LCOE+ 18.0 (June 2025)  | Unsubsidized      |
-| CO2 factor         | EPA AP-42                      | Pipeline gas      |
+**Workaround:** `pip install -r requirements.txt && streamlit run dashboard.py`
+
+### 3. TMY vs actual 2024 solar
+
+PVWatts returns TMY data (industry standard for sizing); demand uses actual 2024
+temperatures. This temporal mismatch is accepted practice but means the solar timeseries
+does not reflect 2024-specific cloud events or irradiance anomalies.
 
 ---
 
-## Planned Extensions
+## ISO Registry
 
-- [ ] Refine sLCOE assumptions: ITC, carbon price, single-axis tracking scenario
-- [ ] Expand to PJM, MISO, CAISO, SPP, NYISO (same methodology, different weather + fuel prices)
-- [ ] Add hourly ERCOT LMPs for behind-the-meter value stacking analysis
-- [ ] Model multi-day storage to reduce G_min requirement
-- [ ] Optimize across finer (S, B) grid near the economic frontier
+Seven US ISO/RTOs pre-configured. Each has an indicative datacenter location, regional
+gas price (EIA 2024 industrial), and CAPEX multiplier (NREL ATB 2025 regional factors):
+
+| ISO | Location | Gas ($/MMBtu) | CAPEX mult. |
+|-----|----------|--------------|-------------|
+| ERCOT | Dallas-Fort Worth, TX | $2.50 | 1.00 |
+| PJM | Pittsburgh, PA | $3.20 | 1.05 |
+| MISO | Indianapolis, IN | $3.00 | 1.03 |
+| CAISO | Fresno, CA | $5.00 | 1.15 |
+| SPP | Oklahoma City, OK | $2.80 | 1.00 |
+| NYISO | Albany, NY | $5.50 | 1.18 |
+| ISONE | Hartford, CT | $6.00 | 1.20 |
 
 ---
 
 ## Installation
 
 ```bash
+# Clone and install
 git clone https://github.com/afroditifragiadaki/Microgrid_project.git
 cd datacenter_microgrid_sim
-conda env create -f environment.yml
-conda activate microgrid_sim
+pip install -r requirements.txt
+
+# Add your NREL API key
+echo "NREL_API_KEY=your_key_here" > config/secrets.env
+echo "NREL_EMAIL=you@example.com" >> config/secrets.env
+
+# Run the dashboard
+streamlit run dashboard.py
 ```
 
-Dependencies: `numpy`, `pandas`, `matplotlib`, `requests`, `pvlib`, `python-dotenv`.
-See `environment.yml` for full pinned versions.
+Get a free NREL API key at [developer.nrel.gov](https://developer.nrel.gov/signup/).
+
+On Windows, prefix Python commands with `set PYTHONIOENCODING=utf-8 &&`.
+
+### Run scripts manually (ERCOT only)
+
+```bash
+set PYTHONIOENCODING=utf-8 && python scripts/01_build_demand.py
+set PYTHONIOENCODING=utf-8 && python scripts/02_build_solar.py
+set PYTHONIOENCODING=utf-8 && python scripts/03_build_bess.py
+set PYTHONIOENCODING=utf-8 && python scripts/04_build_gas.py
+set PYTHONIOENCODING=utf-8 && python scripts/05_run_dispatch.py
+set PYTHONIOENCODING=utf-8 && python scripts/06_solve_reliability.py
+set PYTHONIOENCODING=utf-8 && python scripts/07_optimize_slcoe.py
+```
+
+For other ISOs, use the dashboard's **"Run pipeline"** button — it fetches APIs and
+runs all steps automatically, caching results to `data/processed/{iso}_*.csv`.
+
+---
+
+## Data Sources
+
+| Data | Source | Notes |
+|---|---|---|
+| Ambient temperature | Open-Meteo Historical (ERA5) | Free, no key, hourly |
+| Solar generation | NREL PVWatts V8 / NSRDB TMY | Free key required |
+| Gas prices | EIA 2024 industrial (by state) | ISO-specific in registry |
+| Solar CAPEX | NREL ATB 2025 Moderate | $950/kW DC baseline |
+| BESS CAPEX | Lazard LCOS V18.0 (2024) | $280/kWh, 4-hr |
+| Gas CAPEX | NREL ATB 2025 (RICE proxy) | $1,100/kW installed |
+| CO₂ factor | EPA AP-42 | 0.0531 tCO₂/MMBtu |
+
+---
+
+## Planned Extensions
+
+- [ ] Minimum renewable fraction constraint in sLCOE optimiser
+- [ ] ITC (30% IRA 2022) and carbon price sensitivity scenarios
+- [ ] Single-axis tracking option (CF → ~23%)
+- [ ] Run all 7 ISO pipelines and cross-ISO comparison dashboard
+- [ ] Hourly LMP integration for value-stacking analysis
+- [ ] Fix Streamlit Cloud deployment
+- [ ] CSV data export from dashboard
+- [ ] Expand IT load configurability (variable load profile, colocation scenarios)

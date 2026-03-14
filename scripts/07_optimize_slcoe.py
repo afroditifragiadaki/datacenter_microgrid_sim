@@ -61,8 +61,11 @@ YEAR    = 2024
 # ---------------------------------------------------------------------------
 # Grid (must match reliability solver grid exactly)
 # ---------------------------------------------------------------------------
-S_GRID = np.arange(0,   301, 25)   # MW DC
-B_GRID = np.arange(0,  1001, 100)  # MWh
+from models.bess_model import B_UNIT_MWH, N_UNITS_MAX
+
+S_GRID = np.arange(0, 301, 25)                      # MW DC
+N_GRID = np.arange(0, N_UNITS_MAX + 1, 10, dtype=int)  # number of BESS units
+B_GRID = N_GRID * B_UNIT_MWH                        # equivalent MWh
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +87,9 @@ def run_slcoe_surface(
         total_cost_usd_yr, demand_mwh_yr, slcoe_per_mwh,
         solar_lcoe_contrib, bess_lcoe_contrib, gas_lcoe_contrib
     """
-    # Build lookup dict for G_min
+    # Build lookup dict for G_min — key on (S_mw, B_mwh) rounded to avoid float drift
     gmin_map = {
-        (row.S_mw, row.B_mwh): row.G_min_mw
+        (round(float(row.S_mw), 1), round(float(row.B_mwh), 1)): row.G_min_mw
         for _, row in surface.iterrows()
     }
 
@@ -95,8 +98,8 @@ def run_slcoe_surface(
     t0     = time.time()
 
     for i, S in enumerate(S_GRID):
-        for j, B in enumerate(B_GRID):
-            G_min = gmin_map.get((float(S), float(B)))
+        for j, (N, B) in enumerate(zip(N_GRID, B_GRID)):
+            G_min = gmin_map.get((round(float(S), 1), round(float(B), 1)))
             if G_min is None:
                 continue
 
@@ -105,6 +108,7 @@ def run_slcoe_surface(
 
             row = {
                 "S_mw":             S,
+                "N_units":          int(N),
                 "B_mwh":            B,
                 "G_min_mw":         round(G_min, 2),
                 # Energy
@@ -241,7 +245,8 @@ def main():
     opt     = slcoe_df.loc[idx_opt]
     savings_pct = (base_row["slcoe_per_mwh"] - opt["slcoe_per_mwh"]) / base_row["slcoe_per_mwh"] * 100
     print(f"\n  OPTIMUM (min sLCOE):")
-    print(f"    S = {opt['S_mw']:.0f} MW DC  |  B = {opt['B_mwh']:.0f} MWh  |  "
+    print(f"    S = {opt['S_mw']:.0f} MW DC  |  "
+          f"N = {opt['N_units']:.0f} units ({opt['B_mwh']:.0f} MWh)  |  "
           f"G = {opt['G_min_mw']:.1f} MW")
     print(f"    sLCOE            = ${opt['slcoe_per_mwh']:.2f}/MWh  "
           f"({savings_pct:.1f}% below gas-only)")
@@ -283,7 +288,7 @@ def main():
     # Top 10 configurations
     print(f"\n  Top 10 lowest-sLCOE configurations:")
     top10 = slcoe_df.nsmallest(10, "slcoe_per_mwh")[
-        ["S_mw","B_mwh","G_min_mw","slcoe_per_mwh",
+        ["S_mw","N_units","B_mwh","G_min_mw","slcoe_per_mwh",
          "solar_share_pct","bess_share_pct","gas_share_pct",
          "renewable_share_pct","gas_hours_yr","annual_co2_t"]
     ]
