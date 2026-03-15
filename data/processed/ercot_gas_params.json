@@ -1,0 +1,16 @@
+{
+  "technology": "Natural Gas Reciprocating Engine (RICE)",
+  "heat_rate_mmbtu_per_mwh": 9.0,
+  "thermal_efficiency_pct": 37.91,
+  "gas_price_per_mmbtu": 2.5,
+  "fuel_cost_per_mwh": 22.5,
+  "co2_factor_t_per_mmbtu": 0.0531,
+  "co2_factor_t_per_mwh": 0.4779,
+  "min_load_fraction": 0.3,
+  "dispatch_rule": "P_gas_t = min(G_mw, unmet_demand_t)",
+  "fuel_rule": "Fuel_t [MMBtu] = P_gas_t [MW] * heat_rate",
+  "ercot_peak_load_mw": 67.64,
+  "ercot_min_load_mw": 56.0,
+  "ercot_mean_load_mw": 59.49,
+  "ercot_annual_demand_mwh": 522524.0
+}

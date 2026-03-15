@@ -45,34 +45,55 @@ C_GRID   = "#282c34"
 # Cached data loaders  (iso-aware)
 # ---------------------------------------------------------------------------
 
+def _csv(path: Path) -> pd.DataFrame | None:
+    """Return DataFrame or None if file doesn't exist."""
+    if not path.exists():
+        return None
+    return pd.read_csv(path)
+
 @st.cache_data
 def load_demand(iso_id: str):
-    return pd.read_csv(PROCESSED / f"{iso_id.lower()}_demand_{YEAR}.csv",
-                       index_col="datetime", parse_dates=True)
+    p = PROCESSED / f"{iso_id.lower()}_demand_{YEAR}.csv"
+    df = _csv(p)
+    if df is not None:
+        df = df.set_index("datetime")
+        df.index = pd.to_datetime(df.index)
+    return df
 
 @st.cache_data
 def load_solar(iso_id: str):
-    return pd.read_csv(PROCESSED / f"{iso_id.lower()}_solar_{YEAR}.csv",
-                       index_col="datetime", parse_dates=True)
+    p = PROCESSED / f"{iso_id.lower()}_solar_{YEAR}.csv"
+    df = _csv(p)
+    if df is not None:
+        df = df.set_index("datetime")
+        df.index = pd.to_datetime(df.index)
+    return df
 
 @st.cache_data
 def load_dispatch(iso_id: str, label: str):
     tag = label.replace(" ", "_").replace("=", "").replace(",", "")
-    return pd.read_csv(PROCESSED / f"{iso_id.lower()}_dispatch_{tag}_{YEAR}.csv",
-                       index_col="datetime", parse_dates=True)
+    p = PROCESSED / f"{iso_id.lower()}_dispatch_{tag}_{YEAR}.csv"
+    df = _csv(p)
+    if df is not None:
+        df = df.set_index("datetime")
+        df.index = pd.to_datetime(df.index)
+    return df
 
 @st.cache_data
 def load_dispatch_summary(iso_id: str):
-    return pd.read_csv(PROCESSED / f"{iso_id.lower()}_dispatch_summary_{YEAR}.csv",
-                       index_col="config")
+    p = PROCESSED / f"{iso_id.lower()}_dispatch_summary_{YEAR}.csv"
+    df = _csv(p)
+    if df is not None:
+        df = df.set_index("config")
+    return df
 
 @st.cache_data
 def load_reliability(iso_id: str):
-    return pd.read_csv(PROCESSED / f"{iso_id.lower()}_reliability_surface_{YEAR}.csv")
+    return _csv(PROCESSED / f"{iso_id.lower()}_reliability_surface_{YEAR}.csv")
 
 @st.cache_data
 def load_slcoe(iso_id: str):
-    return pd.read_csv(PROCESSED / f"{iso_id.lower()}_slcoe_surface_{YEAR}.csv")
+    return _csv(PROCESSED / f"{iso_id.lower()}_slcoe_surface_{YEAR}.csv")
 
 @st.cache_data
 def run_custom_dispatch(iso_id: str, S_mw: float, B_mwh: float, G_mw: float):

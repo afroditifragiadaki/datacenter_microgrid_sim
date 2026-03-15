@@ -3,29 +3,15 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Data files (Store these locally, not on GitHub)
-data/raw_nsrdb/
-data/raw_lmp/
-data/processed/
-*.csv
-*.xlsx
-
-# Environments and kernels
-.venv/
-env/
-venv/
-ENV/
+# Secrets — never commit
 .env
 *.env
 config/secrets*
 
-# Raw data (large files, fetched at runtime)
+# Raw / large fetched files — not needed in repo
 data/raw/
 data/raw_nsrdb/
 data/raw_lmp/
-
-# Plots
-*.png
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
