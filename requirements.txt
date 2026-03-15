@@ -1,20 +1,20 @@
 # Core scientific stack
-numpy==2.2.6
-pandas==2.2.3
-scipy==1.15.3
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
 
 # Visualisation
-matplotlib==3.10.3
-seaborn==0.13.2
-plotly==6.6.0
+matplotlib>=3.8
+seaborn>=0.13
+plotly>=5.18
 
 # Dashboard
-streamlit==1.55.0
+streamlit>=1.35
 
 # Solar modelling
-pvlib==0.15.0
+pvlib>=0.10
 
 # Data / API
-requests==2.32.3
-openpyxl==3.1.5
-python-dotenv==1.2.2
+requests>=2.31
+openpyxl>=3.1
+python-dotenv>=1.0
