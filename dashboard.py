@@ -892,7 +892,7 @@ def _page_team() -> None:
                         text-transform:uppercase;color:{MUTED};
                         text-decoration:none;border:1px solid {BORDER};
                         padding:7px 14px;display:inline-block;
-                        transition:color 0.15s">
+                        white-space:nowrap;transition:color 0.15s">
                 LinkedIn ↗
               </a>
             </div>
