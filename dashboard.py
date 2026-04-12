@@ -75,8 +75,8 @@ def _css() -> None:
 
     /* Tab list = navbar background */
     [data-testid="stTabs"] > div[data-testid="stTabsListContainer"] {{
-        background: #111d35 !important;
-        border-bottom: 1px solid #253354 !important;
+        background: #1e3a5f !important;
+        border-bottom: 2px solid #2d5a9e !important;
         padding: 0 0 0 0 !important;
         gap: 0 !important;
         /* Brand injected via ::before */
