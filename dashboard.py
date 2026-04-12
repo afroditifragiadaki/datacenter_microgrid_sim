@@ -58,8 +58,10 @@ def _css() -> None:
         color: {TEXT} !important;
     }}
     [data-testid="stMainBlockContainer"], .main .block-container {{
-        padding: 0 !important;
-        max-width: 100% !important;
+        padding: 0 96px !important;
+        max-width: 1440px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
     }}
 
     /* Hide chrome */
@@ -305,7 +307,7 @@ def _section(text: str) -> None:
 
 def _page_configure() -> None:
     st.markdown(f"""
-    <div style="padding:80px 96px 0">
+    <div style="padding:80px 0 0">
       <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
                   text-transform:uppercase;color:{MUTED};margin-bottom:14px">
         Microgrid Cost Explorer
@@ -324,7 +326,7 @@ def _page_configure() -> None:
     """, unsafe_allow_html=True)
 
     st.markdown(
-        f'<div style="height:1px;background:{BORDER};margin:0 96px 44px"></div>',
+        f'<div style="height:1px;background:{BORDER};margin:0 0 44px"></div>',
         unsafe_allow_html=True,
     )
 
@@ -332,8 +334,6 @@ def _page_configure() -> None:
     form_l, form_r = st.columns([1.2, 2])
 
     with form_l:
-        st.markdown("<div style='padding:0 0 0 96px'>", unsafe_allow_html=True)
-
         it_load = st.number_input(
             "IT Load  (MW)",
             min_value=1.0, max_value=500.0,
@@ -377,11 +377,9 @@ def _page_configure() -> None:
                 st.session_state.selected_iso = None
                 st.rerun()
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
     with form_r:
         st.markdown(f"""
-        <div style="padding:8px 96px 0 64px">
+        <div style="padding:8px 0 0 64px">
           <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
                       text-transform:uppercase;color:{MUTED};margin-bottom:20px">
             Data Sources
@@ -410,7 +408,7 @@ def _page_markets() -> None:
     all_isos = get_all_isos()
 
     st.markdown(f"""
-    <div style="padding:48px 96px 0">
+    <div style="padding:48px 0 0">
       <div style="display:flex;align-items:flex-end;
                   justify-content:space-between;margin-bottom:6px">
         <div style="font-size:28px;font-weight:300;color:{TEXT};
@@ -426,21 +424,17 @@ def _page_markets() -> None:
 
     btn_col, _ = st.columns([1, 8])
     with btn_col:
-        st.markdown("<div style='padding-left:96px'>", unsafe_allow_html=True)
         if st.button("← Reconfigure", type="secondary"):
             st.session_state.configured   = False
             st.session_state.selected_iso = None
             st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(
-        f'<div style="height:1px;background:{BORDER};margin:16px 96px 0"></div>',
+        f'<div style="height:1px;background:{BORDER};margin:16px 0 0"></div>',
         unsafe_allow_html=True,
     )
 
     with st.container():
-        st.markdown("<div style='padding:0 96px'>", unsafe_allow_html=True)
-
         ready_rows, pending_rows = [], []
 
         for iso_id, cfg in all_isos.items():
@@ -551,8 +545,6 @@ def _page_markets() -> None:
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
 
 # ── PAGE: Deep Dive ───────────────────────────────────────────────────────────
 
@@ -563,7 +555,7 @@ def _page_deep_dive(iso_id: str) -> None:
     opt, scale = _constrained_opt(iso_id, it_load, ren_frac)
 
     st.markdown(f"""
-    <div style="padding:48px 96px 0">
+    <div style="padding:48px 0 0">
       <div style="display:flex;align-items:flex-end;
                   justify-content:space-between;margin-bottom:6px">
         <div style="font-size:28px;font-weight:300;color:{TEXT};
@@ -582,27 +574,22 @@ def _page_deep_dive(iso_id: str) -> None:
 
     btn_col, _ = st.columns([1, 8])
     with btn_col:
-        st.markdown("<div style='padding-left:96px'>", unsafe_allow_html=True)
         if st.button("← All Markets", type="secondary"):
             st.session_state.selected_iso = None
             st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(
-        f'<div style="height:1px;background:{BORDER};margin:16px 96px 0"></div>',
+        f'<div style="height:1px;background:{BORDER};margin:16px 0 0"></div>',
         unsafe_allow_html=True,
     )
 
     with st.container():
-        st.markdown("<div style='padding:0 96px'>", unsafe_allow_html=True)
-
         if opt is None:
             st.markdown(f"""
             <div style="padding:48px 0;color:{MUTED};font-size:14px">
               No feasible configuration found for ≥{st.session_state.ren_floor}%
               renewable in this market. Lower the renewable floor and reconfigure.
             </div>""", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         s_mw   = opt["S_mw"]      * scale
@@ -717,8 +704,6 @@ def _page_deep_dive(iso_id: str) -> None:
           PVWatts V8 · Open-Meteo ERA5 · Unsubsidised (pre-IRA ITC) · 2024 USD
         </div>
         """, unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ── Router ────────────────────────────────────────────────────────────────────
