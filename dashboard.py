@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -1113,11 +1114,11 @@ with tab_team:
 # ── Tab redirect via JS (must run after tabs are rendered) ────────────────────
 if st.session_state.get("goto_methodology"):
     st.session_state.goto_methodology = False
-    st.markdown("""
+    components.html("""
     <script>
     setTimeout(function() {
         const tabs = window.parent.document.querySelectorAll('[role="tab"]');
         if (tabs.length > 1) tabs[1].click();
     }, 80);
     </script>
-    """, unsafe_allow_html=True)
+    """, height=0)
