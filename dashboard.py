@@ -368,15 +368,13 @@ def _page_configure() -> None:
             unsafe_allow_html=True,
         )
 
-        _, btn_col = st.columns([1, 2])
-        with btn_col:
-            if st.button("Analyze all markets →", type="primary",
-                         use_container_width=True):
-                st.session_state.it_load     = it_load
-                st.session_state.ren_floor   = ren_floor
-                st.session_state.configured  = True
-                st.session_state.selected_iso = None
-                st.rerun()
+        if st.button("Analyze all markets →", type="primary",
+                     use_container_width=True):
+            st.session_state.it_load     = it_load
+            st.session_state.ren_floor   = ren_floor
+            st.session_state.configured  = True
+            st.session_state.selected_iso = None
+            st.rerun()
 
     with form_r:
         st.markdown(f"""
