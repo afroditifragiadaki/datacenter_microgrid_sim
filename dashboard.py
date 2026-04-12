@@ -306,25 +306,75 @@ def _section(text: str) -> None:
     )
 
 
+# ── Datacenter SVG background ─────────────────────────────────────────────────
+
+def _datacenter_svg() -> str:
+    rows = []
+    num_racks, rack_w, rack_h = 8, 148, 420
+    spacing, start_x, start_y = 198, 40, 30
+    srv_h, srv_gap = 16, 4
+    num_srv = rack_h // (srv_h + srv_gap)
+    for i in range(num_racks):
+        rx = start_x + i * spacing
+        rows.append(
+            f'<rect x="{rx}" y="{start_y}" width="{rack_w}" height="{rack_h}" '
+            f'rx="3" fill="none" stroke="#2d5a9e" stroke-width="0.7"/>'
+        )
+        for j in range(num_srv):
+            sy = start_y + 6 + j * (srv_h + srv_gap)
+            rows.append(
+                f'<rect x="{rx+4}" y="{sy}" width="{rack_w-8}" height="{srv_h}" '
+                f'rx="1.5" fill="#0a1628" stroke="#1a3050" stroke-width="0.4"/>'
+            )
+            bar_w = 40 + ((i * 7 + j * 11) % 55)
+            rows.append(
+                f'<rect x="{rx+8}" y="{sy+5}" width="{bar_w}" height="1.5" '
+                f'rx="1" fill="#1e3a5f"/>'
+            )
+            rows.append(
+                f'<circle cx="{rx+rack_w-14}" cy="{sy+8}" r="2" '
+                f'fill="#3b82f6" opacity="0.85"/>'
+            )
+            if (i + j) % 3 == 0:
+                rows.append(
+                    f'<circle cx="{rx+rack_w-24}" cy="{sy+8}" r="2" '
+                    f'fill="#22c55e" opacity="0.75"/>'
+                )
+    total_w = start_x * 2 + num_racks * spacing
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {total_w} {start_y*2+rack_h}" '
+        f'preserveAspectRatio="xMidYMid slice">'
+        + "".join(rows) + "</svg>"
+    )
+
+
 # ── PAGE: Configure ───────────────────────────────────────────────────────────
 
 def _page_configure() -> None:
     # ── Hero ──────────────────────────────────────────────────────────────────
+    _svg = _datacenter_svg()
     st.markdown(f"""
-    <div style="padding:80px 0 0;text-align:center">
-      <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
-                  text-transform:uppercase;color:{MUTED};margin-bottom:14px">
-        Microgrid Cost Explorer
+    <div style="padding:80px 0 56px;text-align:center;position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;opacity:0.07;pointer-events:none;
+                  display:flex;align-items:center;justify-content:center">
+        {_svg}
       </div>
-      <div style="font-size:40px;font-weight:200;color:{TEXT};
-                  line-height:1.15;margin-bottom:14px;letter-spacing:-0.02em">
-        Datacenter Energy<br>Optimization Platform
-      </div>
-      <div style="font-size:14px;color:{MUTED};line-height:1.75;
-                  margin-bottom:56px;max-width:560px;margin-left:auto;margin-right:auto">
-        Model the optimal Solar · BESS · Gas microgrid for a collocated
-        behind-the-meter facility. Compare system LCOE across all US ISO/RTO
-        markets under your ESG constraints.
+      <div style="position:relative;z-index:1">
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
+                    text-transform:uppercase;color:{MUTED};margin-bottom:14px">
+          Microgrid Cost Explorer
+        </div>
+        <div style="font-size:40px;font-weight:200;color:{TEXT};
+                    line-height:1.15;margin-bottom:14px;letter-spacing:-0.02em">
+          Datacenter Energy<br>Optimization Platform
+        </div>
+        <div style="font-size:14px;color:{MUTED};line-height:1.75;
+                    max-width:560px;margin-left:auto;margin-right:auto">
+          Model the optimal Solar · BESS · Gas microgrid for a collocated
+          behind-the-meter facility. Compare system LCOE across all US ISO/RTO
+          markets under your ESG constraints.
+        </div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1117,8 +1167,15 @@ if st.session_state.get("goto_methodology"):
     components.html("""
     <script>
     setTimeout(function() {
-        const tabs = window.parent.document.querySelectorAll('[role="tab"]');
-        if (tabs.length > 1) tabs[1].click();
-    }, 80);
+        try {
+            var doc = window.top.document;
+            var tabs = Array.from(doc.querySelectorAll('button[role="tab"]'));
+            var target = tabs.find(function(t) {
+                return t.innerText.trim().toUpperCase().includes('METHODOLOGY');
+            });
+            if (target) { target.click(); }
+            else if (tabs.length > 1) { tabs[1].click(); }
+        } catch(e) {}
+    }, 200);
     </script>
-    """, height=0)
+    """, height=30)
