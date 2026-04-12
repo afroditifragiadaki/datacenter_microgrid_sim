@@ -135,7 +135,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigate",
-    ["Methodology", "ISO Registry", "Overview", "Demand", "Solar", "Dispatch", "Reliability", "Economics"],
+    ["Methodology", "ISO Registry", "ISO Comparison", "Overview", "Demand", "Solar", "Dispatch", "Reliability", "Economics"],
     index=0,
 )
 
@@ -1392,4 +1392,394 @@ elif page == "Economics":
     st.caption(
         "Gas price is the dominant driver. Solar/BESS/discount rate have zero "
         "sensitivity at the current optimum (gas-only) since no solar/BESS is deployed."
+    )
+
+
+# ===========================================================================
+# PAGE: ISO COMPARISON
+# ===========================================================================
+elif page == "ISO Comparison":
+    from models.pipeline import is_complete, run_pipeline
+
+    COMPARE_ISOS = ["ERCOT", "PJM", "CAISO"]
+    ISO_COLORS = {"ERCOT": "#e5c07b", "PJM": "#61afef", "CAISO": "#98c379"}
+    ISO_EMOJI  = {"ERCOT": "🌵", "PJM": "🏭", "CAISO": "☀️"}
+    ISO_DESC   = {
+        "ERCOT": "Texas · cheap gas ($2.50/MMBtu) · energy-only market · 1.00× CAPEX",
+        "PJM":   "Pennsylvania · moderate gas ($3.20/MMBtu) · capacity market · 1.05× CAPEX",
+        "CAISO": "California · expensive gas ($5.00/MMBtu) · best solar in CONUS · 1.15× CAPEX",
+    }
+
+    st.title("ISO Comparison: Same Datacenter, Three Markets")
+    st.markdown(
+        "The same **50 MW IT-load datacenter** — identical technology specs, dispatch rules, "
+        "and reliability constraints — placed in three different US energy markets. "
+        "How much does geography change the optimal mix and system cost?"
+    )
+    st.markdown("---")
+
+    # ── Pipeline status ────────────────────────────────────────────────────
+    st.subheader("Pipeline Status")
+    available = {}
+    stat_cols = st.columns(3)
+    for i, iso in enumerate(COMPARE_ISOS):
+        cfg   = get_iso(iso)
+        ready = is_complete(iso, YEAR)
+        available[iso] = ready
+        with stat_cols[i]:
+            if ready:
+                st.success(f"{ISO_EMOJI[iso]} **{iso}** — ready\n\n{cfg['city']}")
+                st.caption(ISO_DESC[iso])
+            else:
+                st.warning(f"⬜ **{iso}** — not run\n\n{cfg['city']}")
+                st.caption(ISO_DESC[iso])
+                if st.button(f"▶ Run {iso} pipeline", key=f"cmp_run_{iso}", type="primary"):
+                    _log_area = st.empty()
+                    _msgs: list[str] = []
+
+                    def _make_log(area, msgs):
+                        def _log(m):
+                            msgs.append(m)
+                            area.code("\n".join(msgs[-18:]))
+                        return _log
+
+                    with st.spinner(f"Running {iso} pipeline… (can take 5-15 min)"):
+                        try:
+                            run_pipeline(iso, YEAR, log=_make_log(_log_area, _msgs))
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as _exc:
+                            st.error(f"Pipeline failed: {_exc}")
+
+    ready_isos = [iso for iso in COMPARE_ISOS if available[iso]]
+
+    if len(ready_isos) < 2:
+        st.markdown("---")
+        st.info(
+            "Run at least **2 ISO pipelines** to unlock comparison charts.  \n"
+            "ERCOT is pre-computed — run **PJM** or **CAISO** above to continue."
+        )
+        st.stop()
+
+    st.markdown("---")
+
+    # ── Load all data for ready ISOs ───────────────────────────────────────
+    _cmp_slcoe    = {}   # optimal row from slcoe_surface
+    _cmp_solar    = {}   # solar timeseries DataFrame
+    _cmp_demand   = {}   # demand timeseries DataFrame
+    _cmp_dispatch = {}   # (results_df, summary_dict) at optimal point
+
+    for _iso in ready_isos:
+        _sdf = load_slcoe(_iso)
+        _opt = _sdf.loc[_sdf["slcoe_per_mwh"].idxmin()].to_dict()
+        _cmp_slcoe[_iso]  = _opt
+        _cmp_solar[_iso]  = load_solar(_iso)
+        _cmp_demand[_iso] = load_demand(_iso)
+        _cmp_dispatch[_iso] = run_custom_dispatch(
+            _iso,
+            float(_opt["S_mw"]),
+            float(_opt["B_mwh"]),
+            float(_opt["G_min_mw"]),
+        )
+
+    # ── Section 1: Location Profile Cards ─────────────────────────────────
+    st.subheader("1  Location at a Glance")
+    card_cols = st.columns(len(ready_isos))
+    for _i, _iso in enumerate(ready_isos):
+        _cfg = get_iso(_iso)
+        _opt = _cmp_slcoe[_iso]
+        _sol = _cmp_solar[_iso]
+        _sm  = _cmp_dispatch[_iso][1]
+        with card_cols[_i]:
+            _c = ISO_COLORS[_iso]
+            st.markdown(
+                f"<div style='border-left:4px solid {_c}; padding:0 0 4px 12px; "
+                f"margin-bottom:8px'><b>{ISO_EMOJI[_iso]} {_iso}</b> — {_cfg['city']}</div>",
+                unsafe_allow_html=True,
+            )
+            st.metric("Annual Solar CF",   f"{_sol['solar_cf'].mean()*100:.1f}%")
+            st.metric("Gas Price",         f"${_cfg['gas_price_per_mmbtu']:.2f}/MMBtu")
+            st.metric("CAPEX Multiplier",  f"{_cfg['capex_multiplier']:.2f}×")
+            st.metric("Optimal sLCOE",     f"${_opt['slcoe_per_mwh']:.2f}/MWh")
+            st.metric("Renewable Share",   f"{_sm['renewable_share_pct']:.1f}%")
+
+    st.markdown("---")
+
+    # ── Section 2: Solar Resource ──────────────────────────────────────────
+    st.subheader("2  Solar Resource — Monthly Capacity Factor")
+    st.caption("PVWatts V8 TMY · Fixed-tilt at site latitude · Same module specs across all ISOs")
+
+    _month_names = ["Jan","Feb","Mar","Apr","May","Jun",
+                    "Jul","Aug","Sep","Oct","Nov","Dec"]
+    _fig_sol = go.Figure()
+    for _iso in ready_isos:
+        _sol = _cmp_solar[_iso].copy()
+        _sol["_m"] = _sol.index.month
+        _monthly = _sol.groupby("_m")["solar_cf"].mean() * 100
+        _fig_sol.add_trace(go.Scatter(
+            x=_month_names, y=_monthly.values,
+            name=_iso, mode="lines+markers",
+            line=dict(color=ISO_COLORS[_iso], width=2.5),
+            marker=dict(size=8),
+        ))
+    _fig_sol.update_layout(
+        height=320, margin=dict(t=10, b=10),
+        yaxis_title="Monthly Avg Capacity Factor (%)",
+        plot_bgcolor="#1e2127", paper_bgcolor="#1e2127", font_color="white",
+        yaxis=dict(gridcolor="#3e4451"),
+        xaxis=dict(gridcolor="#3e4451"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+    )
+    st.plotly_chart(_fig_sol, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Section 3: Optimizer's Chosen Capacities ───────────────────────────
+    st.subheader("3  Optimizer's Answer — What Gets Built?")
+    st.caption("Minimum-sLCOE (S, B, G) configuration from the grid search")
+
+    _fig_caps = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=["Solar Capacity (MW DC)", "BESS Capacity (MWh)", "Gas Capacity (MW)"],
+    )
+    for _ci, (_col_key, _unit) in enumerate(
+        [("S_mw", "MW DC"), ("B_mwh", "MWh"), ("G_min_mw", "MW")], start=1
+    ):
+        _vals = [_cmp_slcoe[_iso][_col_key] for _iso in ready_isos]
+        _fig_caps.add_trace(go.Bar(
+            x=ready_isos,
+            y=_vals,
+            marker_color=[ISO_COLORS[_iso] for _iso in ready_isos],
+            text=[f"{v:.0f}" for v in _vals],
+            textposition="outside",
+            showlegend=False,
+        ), row=1, col=_ci)
+
+    _fig_caps.update_layout(
+        height=340, margin=dict(t=50, b=10),
+        plot_bgcolor="#1e2127", paper_bgcolor="#1e2127", font_color="white",
+    )
+    for _ci in range(1, 4):
+        _fig_caps.update_yaxes(gridcolor="#3e4451", row=1, col=_ci)
+        _fig_caps.update_xaxes(gridcolor="#3e4451", row=1, col=_ci)
+    st.plotly_chart(_fig_caps, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Section 4: Cost Breakdown ──────────────────────────────────────────
+    st.subheader("4  System LCOE — Where Does the Money Go?")
+    st.caption("Annualised CAPEX + O&M + fuel at the optimal configuration, normalised by annual demand")
+
+    _fig_cost = go.Figure()
+    for _tech_key, _tech_label, _tech_color in [
+        ("solar_cost_usd_yr", "Solar (capex + O&M)", C_SOLAR),
+        ("bess_cost_usd_yr",  "BESS (capex + O&M)",  C_BESS),
+        ("gas_cost_usd_yr",   "Gas (capex + O&M + fuel)", C_GAS),
+    ]:
+        _contrib = [
+            _cmp_slcoe[_iso][_tech_key] / _cmp_slcoe[_iso]["demand_mwh_yr"]
+            for _iso in ready_isos
+        ]
+        _fig_cost.add_trace(go.Bar(
+            name=_tech_label,
+            x=ready_isos,
+            y=_contrib,
+            marker_color=_tech_color,
+            text=[f"${v:.2f}" for v in _contrib],
+            textposition="inside",
+            insidetextanchor="middle",
+        ))
+
+    _fig_cost.update_layout(
+        barmode="stack",
+        height=340, margin=dict(t=10, b=10),
+        yaxis_title="sLCOE Contribution ($/MWh)",
+        plot_bgcolor="#1e2127", paper_bgcolor="#1e2127", font_color="white",
+        yaxis=dict(gridcolor="#3e4451"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+    )
+    st.plotly_chart(_fig_cost, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Section 5: Energy Mix Donuts ───────────────────────────────────────
+    st.subheader("5  Energy Mix at Optimal Configuration")
+    st.caption("Annual MWh by source as share of total demand")
+
+    _pie_specs = [[{"type": "pie"} for _ in ready_isos]]
+    _fig_pie = make_subplots(
+        rows=1, cols=len(ready_isos),
+        specs=_pie_specs,
+        subplot_titles=[
+            f"{ISO_EMOJI[_iso]} {_iso}" for _iso in ready_isos
+        ],
+    )
+    for _pi, _iso in enumerate(ready_isos, start=1):
+        _sm = _cmp_dispatch[_iso][1]
+        _fig_pie.add_trace(go.Pie(
+            labels=["Solar", "BESS", "Gas"],
+            values=[
+                _sm["solar_share_pct"],
+                _sm["bess_share_pct"],
+                _sm["gas_share_pct"],
+            ],
+            hole=0.52,
+            marker_colors=[C_SOLAR, C_BESS, C_GAS],
+            textinfo="label+percent",
+            showlegend=(_pi == 1),
+        ), row=1, col=_pi)
+    _fig_pie.update_layout(
+        height=320, margin=dict(t=50, b=10),
+        paper_bgcolor="#1e2127", font_color="white",
+        legend=dict(bgcolor="rgba(0,0,0,0)"),
+    )
+    st.plotly_chart(_fig_pie, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Section 6: Multi-Dimensional Radar ────────────────────────────────
+    st.subheader("6  Multi-Dimensional Comparison")
+    st.caption(
+        "Normalised 0–1 · Outward = better — "
+        "higher solar CF, lower gas price, lower CAPEX, lower sLCOE, higher renewable share"
+    )
+
+    _radar_cats = ["Solar CF", "Low Gas Cost", "Low CAPEX", "Low sLCOE", "Renewable %"]
+
+    def _radar_raw(iso):
+        _sm  = _cmp_dispatch[iso][1]
+        _cfg = get_iso(iso)
+        _opt = _cmp_slcoe[iso]
+        _sol = _cmp_solar[iso]
+        return {
+            "solar_cf":   _sol["solar_cf"].mean() * 100,
+            "gas_price":  _cfg["gas_price_per_mmbtu"],
+            "capex_mult": _cfg["capex_multiplier"],
+            "slcoe":      _opt["slcoe_per_mwh"],
+            "ren_share":  _sm["renewable_share_pct"],
+        }
+
+    _rraw = {_iso: _radar_raw(_iso) for _iso in ready_isos}
+
+    def _minmax_norm(vals):
+        lo, hi = min(vals), max(vals)
+        if hi == lo:
+            return [0.5] * len(vals)
+        return [(v - lo) / (hi - lo) for v in vals]
+
+    # Invert cost/penalty metrics so outward = better
+    _cf_n    = _minmax_norm([_rraw[i]["solar_cf"]       for i in ready_isos])
+    _gas_n   = _minmax_norm([1 / _rraw[i]["gas_price"]  for i in ready_isos])
+    _cap_n   = _minmax_norm([1 / _rraw[i]["capex_mult"] for i in ready_isos])
+    _slc_n   = _minmax_norm([1 / _rraw[i]["slcoe"]      for i in ready_isos])
+    _ren_n   = _minmax_norm([_rraw[i]["ren_share"]       for i in ready_isos])
+
+    _fig_radar = go.Figure()
+    for _ri, _iso in enumerate(ready_isos):
+        _r = [_cf_n[_ri], _gas_n[_ri], _cap_n[_ri], _slc_n[_ri], _ren_n[_ri]]
+        _r += _r[:1]   # close polygon
+        _fig_radar.add_trace(go.Scatterpolar(
+            r=_r,
+            theta=_radar_cats + [_radar_cats[0]],
+            name=_iso,
+            fill="toself",
+            fillcolor=ISO_COLORS[_iso] + "33",
+            line=dict(color=ISO_COLORS[_iso], width=2.5),
+        ))
+    _fig_radar.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 1], gridcolor="#3e4451",
+                            tickfont=dict(size=9)),
+            angularaxis=dict(gridcolor="#3e4451"),
+            bgcolor="#1e2127",
+        ),
+        height=440, margin=dict(t=40, b=40, l=80, r=80),
+        paper_bgcolor="#1e2127", font_color="white",
+        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=-0.15),
+    )
+    st.plotly_chart(_fig_radar, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Section 7: Demand Profile ──────────────────────────────────────────
+    st.subheader("7  Demand Profile — How Climate Shapes IT Load")
+    st.caption("Monthly average total load (MW) = 50 MW IT × PUE(ambient temperature)")
+
+    _col_dem, _col_temp = st.columns(2)
+
+    with _col_dem:
+        _fig_dem = go.Figure()
+        for _iso in ready_isos:
+            _dem = _cmp_demand[_iso].copy()
+            _dem["_m"] = _dem.index.month
+            _mload = _dem.groupby("_m")["total_load_mw"].mean()
+            _fig_dem.add_trace(go.Scatter(
+                x=_month_names, y=_mload.values,
+                name=_iso, mode="lines+markers",
+                line=dict(color=ISO_COLORS[_iso], width=2.5),
+                marker=dict(size=8),
+            ))
+        _fig_dem.update_layout(
+            height=300, margin=dict(t=10, b=10),
+            yaxis_title="Avg Monthly Load (MW)",
+            plot_bgcolor="#1e2127", paper_bgcolor="#1e2127", font_color="white",
+            yaxis=dict(gridcolor="#3e4451"),
+            xaxis=dict(gridcolor="#3e4451"),
+            legend=dict(bgcolor="rgba(0,0,0,0)"),
+        )
+        st.plotly_chart(_fig_dem, use_container_width=True)
+
+    with _col_temp:
+        _fig_tmp = go.Figure()
+        for _iso in ready_isos:
+            _dem = _cmp_demand[_iso].copy()
+            _dem["_m"] = _dem.index.month
+            _mtemp = _dem.groupby("_m")["temp_c"].mean()
+            _fig_tmp.add_trace(go.Scatter(
+                x=_month_names, y=_mtemp.values,
+                name=_iso, mode="lines+markers",
+                line=dict(color=ISO_COLORS[_iso], width=2.5),
+                marker=dict(size=8),
+            ))
+        _fig_tmp.update_layout(
+            height=300, margin=dict(t=10, b=10),
+            yaxis_title="Avg Monthly Temperature (°C)",
+            plot_bgcolor="#1e2127", paper_bgcolor="#1e2127", font_color="white",
+            yaxis=dict(gridcolor="#3e4451"),
+            xaxis=dict(gridcolor="#3e4451"),
+            legend=dict(bgcolor="rgba(0,0,0,0)"),
+        )
+        st.plotly_chart(_fig_tmp, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Section 8: Summary Table ───────────────────────────────────────────
+    st.subheader("8  Summary Table")
+
+    _sum_rows = []
+    for _iso in ready_isos:
+        _cfg = get_iso(_iso)
+        _opt = _cmp_slcoe[_iso]
+        _sm  = _cmp_dispatch[_iso][1]
+        _sol = _cmp_solar[_iso]
+        _sum_rows.append({
+            "ISO":                _iso,
+            "City":               _cfg["city"],
+            "Solar CF (%)":       f"{_sol['solar_cf'].mean()*100:.1f}",
+            "Gas ($/MMBtu)":      f"${_cfg['gas_price_per_mmbtu']:.2f}",
+            "CAPEX mult.":        f"{_cfg['capex_multiplier']:.2f}×",
+            "Solar opt. (MW)":    f"{_opt['S_mw']:.0f}",
+            "BESS opt. (MWh)":    f"{_opt['B_mwh']:.0f}",
+            "Gas opt. (MW)":      f"{_opt['G_min_mw']:.0f}",
+            "Solar share (%)":    f"{_sm['solar_share_pct']:.1f}",
+            "BESS share (%)":     f"{_sm['bess_share_pct']:.1f}",
+            "Gas share (%)":      f"{_sm['gas_share_pct']:.1f}",
+            "Renewable (%)":      f"{_sm['renewable_share_pct']:.1f}",
+            "sLCOE ($/MWh)":      f"${_opt['slcoe_per_mwh']:.2f}",
+            "Annual CO₂ (kt)":    f"{_sm['annual_co2_t']/1000:.0f}",
+        })
+
+    st.dataframe(
+        pd.DataFrame(_sum_rows).set_index("ISO"),
+        use_container_width=True,
     )
