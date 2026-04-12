@@ -58,7 +58,7 @@ def _css() -> None:
         color: {TEXT} !important;
     }}
     [data-testid="stMainBlockContainer"], .main .block-container {{
-        padding: 0 96px !important;
+        padding: 0 96px 96px !important;
         max-width: 1440px !important;
         margin-left: auto !important;
         margin-right: auto !important;
@@ -706,13 +706,201 @@ def _page_deep_dive(iso_id: str) -> None:
         """, unsafe_allow_html=True)
 
 
+# ── PAGE: Methodology ────────────────────────────────────────────────────────
+
+def _page_methodology() -> None:
+    st.markdown(f"""
+    <div style="padding:80px 0 0">
+      <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
+                  text-transform:uppercase;color:{MUTED};margin-bottom:14px">
+        How It Works
+      </div>
+      <div style="font-size:40px;font-weight:200;color:{TEXT};
+                  line-height:1.15;margin-bottom:14px;letter-spacing:-0.02em">
+        Methodology
+      </div>
+      <div style="font-size:14px;color:{MUTED};line-height:1.75;
+                  margin-bottom:56px;max-width:620px">
+        A constrained optimisation over a three-asset microgrid — Solar PV,
+        Battery Energy Storage (BESS), and gas-fired backup — minimising
+        system levelised cost of energy subject to a renewable-share floor.
+      </div>
+    </div>
+    <div style="height:1px;background:{BORDER};margin-bottom:48px"></div>
+    """, unsafe_allow_html=True)
+
+    c_l, _, c_r = st.columns([5, 0.4, 4])
+
+    with c_l:
+        st.markdown(f"""
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                    text-transform:uppercase;color:{MUTED};
+                    border-top:1px solid {BORDER};padding-top:20px;
+                    margin-bottom:18px">System LCOE (sLCOE)</div>
+        <div style="font-size:13px;color:{MUTED};line-height:2.0;
+                    margin-bottom:32px">
+          All capital costs are annualised using a fixed-charge rate derived
+          from a <strong style="color:{TEXT}">7% WACC</strong> over a
+          <strong style="color:{TEXT}">{PROJECT_LIFE}-year project life</strong>.
+          Annual fixed O&amp;M is added, then fuel costs for gas generation are
+          stacked on top. The result is divided by total annual site demand to
+          yield a single $/MWh figure that is directly comparable across markets
+          and configurations.
+        </div>
+
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                    text-transform:uppercase;color:{MUTED};
+                    border-top:1px solid {BORDER};padding-top:20px;
+                    margin-bottom:18px">Optimisation</div>
+        <div style="font-size:13px;color:{MUTED};line-height:2.0;
+                    margin-bottom:32px">
+          A brute-force grid search is run over Solar capacity <em>(S)</em>,
+          BESS energy capacity <em>(B)</em>, and gas nameplate <em>(G)</em>.
+          For each candidate triplet an hourly dispatch simulation determines
+          the share of demand met by each source. Configurations that satisfy
+          the user-defined renewable-share floor are collected; the
+          minimum-sLCOE feasible point is reported as the constrained optimum.
+        </div>
+
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                    text-transform:uppercase;color:{MUTED};
+                    border-top:1px solid {BORDER};padding-top:20px;
+                    margin-bottom:18px">Dispatch Logic</div>
+        <div style="font-size:13px;color:{MUTED};line-height:2.0">
+          Each hour, available solar generation (from PVWatts TMY profiles) is
+          used first. Surplus charges the BESS; deficit is served by BESS
+          discharge down to its state-of-charge floor, with gas covering any
+          remaining shortfall. The BESS model uses a constant round-trip
+          efficiency and enforces capacity limits. Gas is treated as a
+          fully-flexible peaker with no minimum run constraint.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c_r:
+        st.markdown(f"""
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                    text-transform:uppercase;color:{MUTED};
+                    border-top:1px solid {BORDER};padding-top:20px;
+                    margin-bottom:18px">Data Sources</div>
+        """, unsafe_allow_html=True)
+
+        sources = [
+            ("NREL ATB 2025", "Technology capital costs — moderate scenario. "
+             "Covers utility-scale solar PV, Li-ion BESS, and gas RICE."),
+            ("Lazard LCOE+ 18.0", "Independent levelised cost benchmarks used "
+             "for cross-validation of sLCOE outputs."),
+            ("EIA 2026 STEO", "Regional natural gas wellhead price forecasts "
+             "by ISO/RTO market area."),
+            ("PVWatts V8 / NSRDB", "Hourly AC generation profiles for a "
+             "fixed-tilt utility array at each market's representative "
+             "location, using a Typical Meteorological Year."),
+            ("Open-Meteo ERA5", "Hourly dry-bulb temperature for 2024, used "
+             "to adjust IT cooling load and PUE estimates."),
+        ]
+        for title, body in sources:
+            st.markdown(f"""
+            <div style="margin-bottom:22px">
+              <div style="font-size:11px;font-weight:600;color:{TEXT};
+                          margin-bottom:6px">{title}</div>
+              <div style="font-size:12px;color:{MUTED};line-height:1.8">
+                {body}
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                    text-transform:uppercase;color:{MUTED};
+                    border-top:1px solid {BORDER};padding-top:20px;
+                    margin-top:8px;margin-bottom:18px">Key Assumptions</div>
+        <div style="font-size:12px;color:{MUTED};line-height:2.2">
+          Unsubsidised baseline — pre-IRA Investment Tax Credit<br>
+          PUE 1.35 · DC power draw = IT load × PUE<br>
+          BESS round-trip efficiency 85%<br>
+          Solar DC:AC ratio 1.3 · fixed-tilt, no tracking<br>
+          Gas heat rate {HEAT_RATE} MMBtu/MWh (RICE)<br>
+          All costs in real 2024 USD
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ── PAGE: Team ────────────────────────────────────────────────────────────────
+
+TEAM = [
+    {
+        "name":     "Afroditi Fragkiadaki",
+        "role":     "Energy Systems Modelling · Optimisation",
+        "email":    "af3619@columbia.edu",
+        "linkedin": "https://www.linkedin.com/in/aphroditi-fragkiadaki/",
+        "bio":      "Lead developer. Built the dispatch engine, sLCOE surface "
+                    "optimiser, and Streamlit dashboard.",
+    },
+]
+
+
+def _page_team() -> None:
+    st.markdown(f"""
+    <div style="padding:80px 0 0">
+      <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
+                  text-transform:uppercase;color:{MUTED};margin-bottom:14px">
+        Capstone Project
+      </div>
+      <div style="font-size:40px;font-weight:200;color:{TEXT};
+                  line-height:1.15;margin-bottom:14px;letter-spacing:-0.02em">
+        The Team
+      </div>
+      <div style="font-size:14px;color:{MUTED};line-height:1.75;
+                  margin-bottom:56px;max-width:560px">
+        Graduate capstone project — Northeastern University, 2025.
+      </div>
+    </div>
+    <div style="height:1px;background:{BORDER};margin-bottom:48px"></div>
+    """, unsafe_allow_html=True)
+
+    cols = st.columns(min(len(TEAM), 4), gap="large")
+    for i, member in enumerate(TEAM):
+        with cols[i % 4]:
+            initials = "".join(w[0] for w in member["name"].split()[:2]).upper()
+            st.markdown(f"""
+            <div style="border:1px solid {BORDER};padding:28px 24px 24px">
+              <div style="width:48px;height:48px;border-radius:50%;
+                          background:{SURFACE};border:1px solid {BORDER};
+                          display:flex;align-items:center;justify-content:center;
+                          font-size:14px;font-weight:600;color:{TEXT};
+                          letter-spacing:0.04em;margin-bottom:20px">
+                {initials}
+              </div>
+              <div style="font-size:15px;font-weight:500;color:{TEXT};
+                          margin-bottom:5px">{member['name']}</div>
+              <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;
+                          text-transform:uppercase;color:{ACCENT};
+                          margin-bottom:16px">{member['role']}</div>
+              <div style="font-size:12px;color:{MUTED};line-height:1.8;
+                          margin-bottom:20px">{member['bio']}</div>
+              <div style="font-size:11px;color:{MUTED};margin-bottom:20px">
+                {member.get('email', '')}
+              </div>
+              <a href="{member['linkedin']}" target="_blank"
+                 style="font-size:9px;font-weight:600;letter-spacing:0.14em;
+                        text-transform:uppercase;color:{MUTED};
+                        text-decoration:none;border:1px solid {BORDER};
+                        padding:7px 14px;display:inline-block;
+                        transition:color 0.15s">
+                LinkedIn ↗
+              </a>
+            </div>
+            """, unsafe_allow_html=True)
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
 _init_state()
 _css()
 
 # ── Top navbar — add future pages as new tabs here ──
-tab_optimizer, = st.tabs(["Optimizer"])
+tab_optimizer, tab_methodology, tab_team = st.tabs(
+    ["Optimizer", "Methodology", "Team"]
+)
 
 with tab_optimizer:
     if not st.session_state.configured:
@@ -721,3 +909,9 @@ with tab_optimizer:
         _page_deep_dive(st.session_state.selected_iso)
     else:
         _page_markets()
+
+with tab_methodology:
+    _page_methodology()
+
+with tab_team:
+    _page_team()
