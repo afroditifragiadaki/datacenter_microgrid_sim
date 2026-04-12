@@ -423,9 +423,9 @@ def _page_markets() -> None:
     </div>
     """, unsafe_allow_html=True)
 
-    btn_col, _ = st.columns([1, 8])
+    btn_col, _ = st.columns([2, 7])
     with btn_col:
-        if st.button("← Reconfigure", type="secondary"):
+        if st.button("← Reconfigure", type="secondary", use_container_width=True):
             st.session_state.configured   = False
             st.session_state.selected_iso = None
             st.rerun()
@@ -484,8 +484,10 @@ def _page_markets() -> None:
                 height=min(80 + len(ready_rows) * 36, 380),
             )
             st.markdown(
-                f'<div style="font-size:10px;color:{MUTED};margin-top:8px">'
-                f'Select a row to explore the optimal configuration in detail.</div>',
+                f'<div style="font-size:11px;color:{MUTED};margin-top:10px;'
+                f'padding:10px 14px;border:1px solid {BORDER};display:inline-block">'
+                f'Click any row to deep dive into that market\'s optimal configuration — '
+                f'cost breakdown, energy mix, and gas price sensitivity.</div>',
                 unsafe_allow_html=True,
             )
             if event.selection and event.selection.rows:
@@ -573,9 +575,9 @@ def _page_deep_dive(iso_id: str) -> None:
     </div>
     """, unsafe_allow_html=True)
 
-    btn_col, _ = st.columns([1, 8])
+    btn_col, _ = st.columns([2, 7])
     with btn_col:
-        if st.button("← All Markets", type="secondary"):
+        if st.button("← All Markets", type="secondary", use_container_width=True):
             st.session_state.selected_iso = None
             st.rerun()
 
