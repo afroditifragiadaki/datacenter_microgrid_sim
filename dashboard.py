@@ -168,6 +168,7 @@ def _css() -> None:
         font-weight: 600 !important;
         letter-spacing: 0.12em !important;
         text-transform: uppercase !important;
+        white-space: nowrap !important;
         transition: opacity 0.15s !important;
     }}
     .stButton > button[kind="primary"] {{
