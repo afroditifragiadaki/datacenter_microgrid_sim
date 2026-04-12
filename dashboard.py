@@ -829,11 +829,23 @@ def _page_methodology() -> None:
 TEAM = [
     {
         "name":     "Afroditi Fragkiadaki",
-        "role":     "Energy Systems Modelling · Optimisation",
         "email":    "af3619@columbia.edu",
         "linkedin": "https://www.linkedin.com/in/aphroditi-fragkiadaki/",
-        "bio":      "Lead developer. Built the dispatch engine, sLCOE surface "
-                    "optimiser, and Streamlit dashboard.",
+    },
+    {
+        "name":     "Daniel Holland",
+        "email":    "doh2105@columbia.edu",
+        "linkedin": "https://www.linkedin.com/in/daniel-holland-2b3a58218/",
+    },
+    {
+        "name":     "Raphael Vogeley",
+        "email":    "rpv2113@columbia.edu",
+        "linkedin": "https://www.linkedin.com/in/raphael-vogeley/",
+    },
+    {
+        "name":     "Tselmeg Mendsaikhan",
+        "email":    "tm3516@columbia.edu",
+        "linkedin": "https://www.linkedin.com/in/tselmeg-mendsaikhan-d12152026/",
     },
 ]
 
@@ -851,7 +863,7 @@ def _page_team() -> None:
       </div>
       <div style="font-size:14px;color:{MUTED};line-height:1.75;
                   margin-bottom:56px;max-width:560px">
-        Graduate capstone project — Northeastern University, 2025.
+        ELEN4510 Grid Modernization &amp; Clean Tech — Columbia University.
       </div>
     </div>
     <div style="height:1px;background:{BORDER};margin-bottom:48px"></div>
@@ -871,14 +883,9 @@ def _page_team() -> None:
                 {initials}
               </div>
               <div style="font-size:15px;font-weight:500;color:{TEXT};
-                          margin-bottom:5px">{member['name']}</div>
-              <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;
-                          text-transform:uppercase;color:{ACCENT};
-                          margin-bottom:16px">{member['role']}</div>
-              <div style="font-size:12px;color:{MUTED};line-height:1.8;
-                          margin-bottom:20px">{member['bio']}</div>
+                          margin-bottom:8px">{member['name']}</div>
               <div style="font-size:11px;color:{MUTED};margin-bottom:20px">
-                {member.get('email', '')}
+                {member['email']}
               </div>
               <a href="{member['linkedin']}" target="_blank"
                  style="font-size:9px;font-weight:600;letter-spacing:0.14em;
