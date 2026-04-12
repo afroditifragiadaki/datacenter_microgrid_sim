@@ -75,7 +75,7 @@ def _css() -> None:
 
     /* Tab list = navbar background */
     [data-testid="stTabs"] > div[data-testid="stTabsListContainer"] {{
-        background: {BG} !important;
+        background: {SURFACE} !important;
         border-bottom: 1px solid {BORDER} !important;
         padding: 0 0 0 0 !important;
         gap: 0 !important;
@@ -223,10 +223,11 @@ def _css() -> None:
 
 def _init_state() -> None:
     for key, val in {
-        "configured":    False,
-        "it_load":       50.0,
-        "ren_floor":     30,
-        "selected_iso":  None,
+        "configured":      False,
+        "it_load":         50.0,
+        "ren_floor":       30,
+        "selected_iso":    None,
+        "goto_methodology": False,
     }.items():
         if key not in st.session_state:
             st.session_state[key] = val
@@ -307,8 +308,9 @@ def _section(text: str) -> None:
 # ── PAGE: Configure ───────────────────────────────────────────────────────────
 
 def _page_configure() -> None:
+    # ── Hero ──────────────────────────────────────────────────────────────────
     st.markdown(f"""
-    <div style="padding:80px 0 0">
+    <div style="padding:80px 0 0;text-align:center">
       <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
                   text-transform:uppercase;color:{MUTED};margin-bottom:14px">
         Microgrid Cost Explorer
@@ -318,7 +320,7 @@ def _page_configure() -> None:
         Datacenter Energy<br>Optimization Platform
       </div>
       <div style="font-size:14px;color:{MUTED};line-height:1.75;
-                  margin-bottom:56px;max-width:560px">
+                  margin-bottom:56px;max-width:560px;margin-left:auto;margin-right:auto">
         Model the optimal Solar · BESS · Gas microgrid for a collocated
         behind-the-meter facility. Compare system LCOE across all US ISO/RTO
         markets under your ESG constraints.
@@ -331,10 +333,10 @@ def _page_configure() -> None:
         unsafe_allow_html=True,
     )
 
-    # Form — left-aligned, generous width, no centering columns
-    form_l, form_r = st.columns([1.2, 2])
+    # ── Optimizer form — centered ──────────────────────────────────────────────
+    _, form_col, _ = st.columns([1, 1.4, 1])
 
-    with form_l:
+    with form_col:
         it_load = st.number_input(
             "IT Load  (MW)",
             min_value=1.0, max_value=500.0,
@@ -370,15 +372,23 @@ def _page_configure() -> None:
 
         if st.button("Analyze all markets →", type="primary",
                      use_container_width=True):
-            st.session_state.it_load     = it_load
-            st.session_state.ren_floor   = ren_floor
-            st.session_state.configured  = True
+            st.session_state.it_load      = it_load
+            st.session_state.ren_floor    = ren_floor
+            st.session_state.configured   = True
             st.session_state.selected_iso = None
             st.rerun()
 
-    with form_r:
+    # ── Data sources — centered at bottom ─────────────────────────────────────
+    st.markdown(
+        f'<div style="height:1px;background:{BORDER};margin:56px 0 40px"></div>',
+        unsafe_allow_html=True,
+    )
+
+    _, ds_col, _ = st.columns([1, 2, 1])
+
+    with ds_col:
         st.markdown(f"""
-        <div style="padding:8px 0 0 64px">
+        <div style="text-align:center">
           <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
                       text-transform:uppercase;color:{MUTED};margin-bottom:20px">
             Data Sources
@@ -390,13 +400,18 @@ def _page_configure() -> None:
             PVWatts V8 / NSRDB — Solar resource (TMY)<br>
             Open-Meteo ERA5 — Hourly temperature, 2024<br>
           </div>
-          <div style="margin-top:32px;font-size:12px;color:{MUTED};line-height:2.2">
-            7% WACC &nbsp;·&nbsp; {PROJECT_LIFE}-year project life<br>
-            Unsubsidised baseline — pre-IRA ITC<br>
-            All costs in 2024 USD
+          <div style="margin-top:20px;font-size:12px;color:{MUTED};line-height:2.2">
+            7% WACC &nbsp;·&nbsp; {PROJECT_LIFE}-year project life &nbsp;·&nbsp;
+            Unsubsidised baseline — pre-IRA ITC &nbsp;·&nbsp; All costs in 2024 USD
           </div>
         </div>
         """, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+
+        if st.button("View Methodology →", type="secondary", use_container_width=True):
+            st.session_state.goto_methodology = True
+            st.rerun()
 
 
 # ── PAGE: Markets ─────────────────────────────────────────────────────────────
@@ -1094,3 +1109,15 @@ with tab_methodology:
 
 with tab_team:
     _page_team()
+
+# ── Tab redirect via JS (must run after tabs are rendered) ────────────────────
+if st.session_state.get("goto_methodology"):
+    st.session_state.goto_methodology = False
+    st.markdown("""
+    <script>
+    setTimeout(function() {
+        const tabs = window.parent.document.querySelectorAll('[role="tab"]');
+        if (tabs.length > 1) tabs[1].click();
+    }, 80);
+    </script>
+    """, unsafe_allow_html=True)
