@@ -842,10 +842,10 @@ def _page_methodology() -> None:
     <div style="height:1px;background:{BORDER};margin-bottom:48px"></div>
     """, unsafe_allow_html=True)
 
-    # ── Section 1: Pipeline flowchart + sLCOE formula ─────────────────────────
-    col_flow, _, col_formula = st.columns([4, 0.4, 5])
+    # ── Section 1: Pipeline flowchart ─────────────────────────────────────────
+    _, sec_col, _ = st.columns([1, 2.4, 1])
 
-    with col_flow:
+    with sec_col:
         st.markdown(f"""
         <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
                     text-transform:uppercase;color:{MUTED};
@@ -883,7 +883,15 @@ def _page_methodology() -> None:
             color=C_SOLAR, accent=C_SOLAR)}
         """, unsafe_allow_html=True)
 
-    with col_formula:
+    # ── Section 2: sLCOE formula ───────────────────────────────────────────────
+    st.markdown(
+        f'<div style="height:1px;background:{BORDER};margin:48px 0 40px"></div>',
+        unsafe_allow_html=True,
+    )
+
+    _, sec_col2, _ = st.columns([1, 2.4, 1])
+
+    with sec_col2:
         st.markdown(f"""
         <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
                     text-transform:uppercase;color:{MUTED};
