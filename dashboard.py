@@ -855,7 +855,7 @@ def _page_team() -> None:
     <div style="padding:80px 0 0">
       <div style="font-size:9px;font-weight:600;letter-spacing:0.22em;
                   text-transform:uppercase;color:{MUTED};margin-bottom:14px">
-        Capstone Project
+        Columbia University
       </div>
       <div style="font-size:40px;font-weight:200;color:{TEXT};
                   line-height:1.15;margin-bottom:14px;letter-spacing:-0.02em">
