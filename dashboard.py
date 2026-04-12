@@ -356,7 +356,7 @@ def _page_configure() -> None:
     _svg = _datacenter_svg()
     st.markdown(f"""
     <div style="padding:80px 0 56px;text-align:center;position:relative;overflow:hidden">
-      <div style="position:absolute;inset:0;opacity:0.07;pointer-events:none;
+      <div style="position:absolute;inset:0;opacity:0.22;pointer-events:none;
                   display:flex;align-items:center;justify-content:center">
         {_svg}
       </div>
