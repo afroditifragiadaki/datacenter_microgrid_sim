@@ -34,6 +34,7 @@ ACCENT  = "#3b82f6"
 C_SOLAR = "#f59e0b"
 C_BESS  = "#3b82f6"
 C_GAS   = "#ef4444"
+C_GRID  = "#10b981"
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -250,6 +251,47 @@ def _dispatch_at(iso_id: str, S: float, B: float, G: float) -> dict:
     return summary
 
 
+@st.cache_data
+def _load_grid_slcoe(iso_id: str) -> pd.DataFrame:
+    p = PROCESSED / f"{iso_id.lower()}_grid_slcoe_surface_{YEAR}.csv"
+    return pd.read_csv(p) if p.exists() else pd.DataFrame()
+
+
+@st.cache_data
+def _dispatch_grid_at(iso_id: str, S: float, B: float, G: float) -> dict:
+    from models.dispatcher import dispatch_grid, load_timeseries
+    from models.gas_model import HEAT_RATE_MMBTU_PER_MWH
+    from models.iso_registry import get_costs
+    ts = load_timeseries(PROCESSED, YEAR, iso_id=iso_id)
+    prices_path = PROCESSED / f"{iso_id.lower()}_grid_prices_{YEAR}.csv"
+    prices = pd.read_csv(prices_path, index_col="datetime", parse_dates=True)
+    ts = ts.copy()
+    ts["grid_price_per_mwh"] = prices["grid_price_per_mwh"].values
+    cfg   = get_iso(iso_id)
+    costs = get_costs()
+    gas_marginal = (
+        cfg["gas_price_per_mmbtu"] * HEAT_RATE_MMBTU_PER_MWH
+        + costs["gas_rice"]["opex_variable_per_mwh"]
+    )
+    _, summary = dispatch_grid(S, B, G, ts, gas_marginal)
+    return summary
+
+
+def _constrained_opt_grid(iso_id: str, it_load: float, ren_frac: float):
+    df = _load_grid_slcoe(iso_id)
+    if df.empty:
+        return None, it_load / BASE_IT_LOAD_MW
+    scale = it_load / BASE_IT_LOAD_MW
+    df = df.copy()
+    df["ren_share"] = 1.0 - (
+        df["gas_gen_mwh"] + df["grid_import_mwh_yr"]
+    ) / df["demand_mwh_yr"]
+    feasible = df[df["ren_share"] >= ren_frac]
+    if feasible.empty:
+        return None, scale
+    return feasible.loc[feasible["slcoe_per_mwh"].idxmin()].to_dict(), scale
+
+
 def _constrained_opt(iso_id: str, it_load: float, ren_frac: float):
     df = _load_slcoe(iso_id)
     if df.empty:
@@ -450,6 +492,7 @@ def _page_configure() -> None:
             EIA 2026 STEO — Regional natural gas prices<br>
             PVWatts V8 / NSRDB — Solar resource (TMY)<br>
             Open-Meteo ERA5 — Hourly temperature, 2024<br>
+            gridstatus / ISO public APIs — Hourly day-ahead LMP, 2024<br>
           </div>
           <div style="margin-top:20px;font-size:12px;color:{MUTED};line-height:2.2">
             7% WACC &nbsp;·&nbsp; {PROJECT_LIFE}-year project life &nbsp;·&nbsp;
@@ -603,6 +646,98 @@ def _page_markets() -> None:
                                 st.rerun()
                             except Exception as exc:
                                 st.error(str(exc))
+
+        # ── Microgrid vs Grid-Connected comparison ────────────────────────────
+        comp_rows = []
+        for row in ready_rows:
+            if row["opt"] is None:
+                continue
+            g_opt, _ = _constrained_opt_grid(row["iso"], it_load, ren_frac)
+            if g_opt is None:
+                continue
+            mg = row["opt"]["slcoe_per_mwh"]
+            gr = g_opt["slcoe_per_mwh"]
+            comp_rows.append({
+                "iso":      row["iso"],
+                "location": row["cfg"]["city"],
+                "mg_slcoe": mg,
+                "gr_slcoe": gr,
+                "delta":    mg - gr,          # positive = grid cheaper
+                "winner":   "Grid" if gr < mg else "Microgrid",
+            })
+
+        if comp_rows:
+            _section("Microgrid vs Grid-Connected — sLCOE Comparison")
+
+            isos_c  = [r["iso"]      for r in comp_rows]
+            mg_vals = [r["mg_slcoe"] for r in comp_rows]
+            gr_vals = [r["gr_slcoe"] for r in comp_rows]
+
+            fig_cmp = go.Figure()
+            fig_cmp.add_trace(go.Bar(
+                name="Microgrid", x=isos_c, y=mg_vals,
+                marker_color=C_SOLAR, marker_line_width=0,
+                text=[f"${v:.0f}" for v in mg_vals],
+                textposition="outside",
+                textfont=dict(size=10, color=TEXT),
+                hovertemplate="Microgrid: $%{y:.2f}/MWh<extra></extra>",
+            ))
+            fig_cmp.add_trace(go.Bar(
+                name="Grid-Connected", x=isos_c, y=gr_vals,
+                marker_color=C_GRID, marker_line_width=0,
+                text=[f"${v:.0f}" for v in gr_vals],
+                textposition="outside",
+                textfont=dict(size=10, color=TEXT),
+                hovertemplate="Grid-Connected: $%{y:.2f}/MWh<extra></extra>",
+            ))
+            fig_cmp.update_layout(
+                barmode="group", height=320,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(t=32, b=0, l=0, r=0),
+                yaxis=dict(
+                    tickprefix="$", ticksuffix="/MWh",
+                    tickfont=dict(color=MUTED, size=10),
+                    gridcolor=BORDER, zeroline=False,
+                ),
+                xaxis=dict(tickfont=dict(color=TEXT, size=12), gridcolor="rgba(0,0,0,0)"),
+                legend=dict(
+                    font=dict(color=MUTED, size=10),
+                    bgcolor="rgba(0,0,0,0)",
+                    orientation="h", x=0, y=1.08,
+                ),
+                font=dict(family="Inter"),
+                bargap=0.28, bargroupgap=0.06,
+            )
+            st.plotly_chart(fig_cmp, use_container_width=True,
+                            config={"displayModeBar": False})
+
+            # Summary table
+            cmp_display = pd.DataFrame([{
+                "Market":              r["iso"],
+                "Location":            r["location"],
+                "Microgrid  $/MWh":    round(r["mg_slcoe"], 2),
+                "Grid-Connected $/MWh": round(r["gr_slcoe"], 2),
+                "Δ  $/MWh":            round(abs(r["delta"]), 2),
+                "Cheaper":             r["winner"],
+            } for r in comp_rows])
+
+            st.dataframe(
+                cmp_display, use_container_width=True, hide_index=True,
+                column_config={
+                    "Microgrid  $/MWh":     st.column_config.NumberColumn(format="$%.2f"),
+                    "Grid-Connected $/MWh": st.column_config.NumberColumn(format="$%.2f"),
+                    "Δ  $/MWh":             st.column_config.NumberColumn(format="$%.2f"),
+                },
+                height=80 + len(comp_rows) * 36,
+            )
+            st.markdown(
+                f'<div style="font-size:10px;color:{MUTED};margin-top:8px">'
+                f'Grid renewable share defined as on-site solar+BESS only — '
+                f'grid imports and gas both counted as non-renewable. '
+                f'Same renewable floor applied to both models.</div>',
+                unsafe_allow_html=True,
+            )
 
         st.markdown(f"""
         <div style="font-size:10px;color:{MUTED};letter-spacing:0.04em;
@@ -763,6 +898,155 @@ def _page_deep_dive(iso_id: str) -> None:
                 f'Optimal (S, B, G) held fixed. Only fuel cost varies.</div>',
                 unsafe_allow_html=True,
             )
+
+        # ── vs Grid-Connected ──────────────────────────────────────────────────
+        _section("vs Grid-Connected")
+
+        g_opt, _ = _constrained_opt_grid(iso_id, it_load, ren_frac)
+
+        if g_opt is None:
+            st.markdown(
+                f'<div style="color:{MUTED};font-size:13px;padding:8px 0">'
+                f'Grid-connected data not available for this market.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            gr_slcoe  = g_opt["slcoe_per_mwh"]
+            gr_s      = g_opt["S_mw"]      * scale
+            gr_b      = g_opt["B_mwh"]     * scale
+            gr_g      = g_opt["G_mw"]      * scale
+            gr_import = g_opt["grid_import_mwh_yr"] * scale
+            gr_dem    = g_opt["demand_mwh_yr"]       * scale
+            gr_ren    = g_opt["ren_share"]  * 100
+            delta     = slcoe - gr_slcoe   # positive → grid is cheaper
+
+            # Winner banner
+            if delta > 0:
+                winner_txt  = f"Grid-connected saves&nbsp; <strong>${delta:.2f}/MWh</strong>"
+                winner_col  = C_GRID
+            else:
+                winner_txt  = f"Microgrid saves&nbsp; <strong>${abs(delta):.2f}/MWh</strong>"
+                winner_col  = C_SOLAR
+            st.markdown(
+                f'<div style="border-left:3px solid {winner_col};'
+                f'padding:10px 18px;background:{SURFACE};margin-bottom:20px;'
+                f'font-size:13px;color:{TEXT}">{winner_txt}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # KPI row: grid-connected optimum
+            gk1, gk2, gk3, gk4, gk5 = st.columns(5)
+            for col, lbl, val, sub in [
+                (gk1, "Grid sLCOE",    f"${gr_slcoe:.2f}", "$/MWh · constrained min"),
+                (gk2, "Solar",         f"{gr_s:.0f} MW",   "DC nameplate"),
+                (gk3, "BESS",          f"{gr_b:.0f} MWh",  "4-hour Li-ion"),
+                (gk4, "Gas Backup",    f"{gr_g:.0f} MW",   "grid fills remaining gap"),
+                (gk5, "Grid Import",   f"{gr_import/1e3:.1f} GWh/yr",
+                 f"{gr_import/gr_dem*100:.1f}% of annual demand"),
+            ]:
+                col.markdown(_kpi(lbl, val, sub), unsafe_allow_html=True)
+
+            # Side-by-side cost breakdown
+            _section("Cost Breakdown — Microgrid vs Grid-Connected")
+            dem_yr = opt["demand_mwh_yr"]
+
+            # Microgrid components ($/MWh)
+            mg_sol = opt["solar_cost_usd_yr"] / dem_yr
+            mg_bes = opt["bess_cost_usd_yr"]  / dem_yr
+            mg_gas = opt["gas_cost_usd_yr"]   / dem_yr
+
+            # Grid-connected components ($/MWh)
+            gr_sol  = g_opt["solar_cost_usd_yr"]          / dem_yr
+            gr_bes  = g_opt["bess_cost_usd_yr"]           / dem_yr
+            gr_gas  = g_opt["gas_cost_usd_yr"]            / dem_yr
+            gr_gfix = g_opt["grid_fixed_cost_usd_yr"]     / dem_yr
+            gr_gen  = g_opt["grid_energy_cost_usd_yr"]    / dem_yr
+
+            fig_cmp = go.Figure()
+            cats   = ["Microgrid", "Grid-Connected"]
+            for label, mg_v, gr_v, color in [
+                ("Solar",          mg_sol, gr_sol,  C_SOLAR),
+                ("BESS",           mg_bes, gr_bes,  C_BESS),
+                ("Gas",            mg_gas, gr_gas,  C_GAS),
+                ("Grid (fixed)",   0,      gr_gfix, C_GRID),
+                ("Grid (energy)",  0,      gr_gen,  "#34d399"),
+            ]:
+                fig_cmp.add_trace(go.Bar(
+                    name=label, x=cats, y=[mg_v, gr_v],
+                    marker_color=color, marker_line_width=0,
+                    hovertemplate=f"{label}: $%{{y:.2f}}/MWh<extra></extra>",
+                ))
+
+            fig_cmp.update_layout(
+                barmode="stack", height=260,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(t=0, b=0, l=0, r=0),
+                yaxis=dict(
+                    tickprefix="$", ticksuffix="/MWh",
+                    tickfont=dict(color=MUTED, size=10),
+                    gridcolor=BORDER, zeroline=False,
+                ),
+                xaxis=dict(tickfont=dict(color=TEXT, size=12), gridcolor="rgba(0,0,0,0)"),
+                legend=dict(
+                    orientation="h", x=0, y=-0.18,
+                    font=dict(color=MUTED, size=10),
+                    bgcolor="rgba(0,0,0,0)",
+                ),
+                font=dict(family="Inter"),
+                bargap=0.35,
+            )
+            st.plotly_chart(fig_cmp, use_container_width=True,
+                            config={"displayModeBar": False})
+
+            # Grid-connected energy mix (dispatch)
+            try:
+                gd = _dispatch_grid_at(
+                    iso_id,
+                    float(g_opt["S_mw"]),
+                    float(g_opt["B_mwh"]),
+                    float(g_opt["G_mw"]),
+                )
+                gr_solar_pct = gd["solar_share_pct"]
+                gr_bess_pct  = gd["bess_share_pct"]
+                gr_gas_pct   = gd["gas_share_pct"]
+                gr_grid_pct  = gd["grid_share_pct"]
+            except Exception:
+                gr_solar_pct = gr_ren * 0.65
+                gr_bess_pct  = gr_ren * 0.35
+                gr_gas_pct   = (100 - gr_ren) * 0.4
+                gr_grid_pct  = (100 - gr_ren) * 0.6
+
+            mix_col, _ = st.columns([2, 3])
+            with mix_col:
+                fig_mix = go.Figure(go.Pie(
+                    labels=["Solar", "BESS", "Gas", "Grid Import"],
+                    values=[gr_solar_pct, gr_bess_pct, gr_gas_pct, gr_grid_pct],
+                    hole=0.68,
+                    marker_colors=[C_SOLAR, C_BESS, C_GAS, C_GRID],
+                    marker_line=dict(color=BG, width=2),
+                    textinfo="none",
+                    hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+                ))
+                fig_mix.add_annotation(
+                    text=f"<b>{gr_ren:.0f}%</b><br>renewable",
+                    x=0.5, y=0.5, xref="paper", yref="paper",
+                    showarrow=False,
+                    font=dict(size=14, color=TEXT, family="Inter"),
+                    align="center",
+                )
+                fig_mix.update_layout(
+                    height=180, margin=dict(t=0, b=28, l=0, r=0),
+                    paper_bgcolor="rgba(0,0,0,0)", showlegend=True,
+                    legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.12,
+                                font=dict(size=10, color=MUTED),
+                                bgcolor="rgba(0,0,0,0)"),
+                    title=dict(text="Grid-Connected Energy Mix",
+                               font=dict(size=10, color=MUTED),
+                               x=0, pad=dict(b=10)),
+                )
+                st.plotly_chart(fig_mix, use_container_width=True,
+                                config={"displayModeBar": False})
 
         st.markdown(f"""
         <div style="font-size:10px;color:{MUTED};letter-spacing:0.04em;
