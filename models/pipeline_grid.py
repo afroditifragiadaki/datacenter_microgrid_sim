@@ -69,10 +69,9 @@ def _build_grid_prices(iso_id: str, year: int, log: Callable) -> pd.DataFrame:
         log(f"  grid prices: loaded from cache ({out_path.name})")
         return pd.read_csv(out_path, index_col="datetime", parse_dates=True)
 
-    log(f"  grid prices: generating synthetic profile for {iso_id} ...")
-    df = build_grid_price_timeseries(iso_id, year)
+    df = build_grid_price_timeseries(iso_id, year, log=log)
     df.to_csv(out_path)
-    log(f"  grid prices: saved {len(df):,} rows -> {out_path.name}")
+    log(f"  grid prices: cached -> {out_path.name}")
     return df
 
 
