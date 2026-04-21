@@ -202,6 +202,71 @@ def compute_slcoe(
     }
 
 
+def compute_slcoe_grid(
+    iso: dict,
+    costs: dict,
+    S_mw: float,
+    B_mwh: float,
+    G_mw: float,
+    gas_gen_mwh_yr: float,
+    grid_import_cost_yr: float,
+    grid_import_mwh_yr: float,
+    peak_grid_import_mw: float,
+    annual_load_mwh: float,
+) -> dict:
+    """
+    Compute grid-connected system LCOE ($/MWh).
+
+    Total cost = solar (capex + opex)
+               + bess  (capex + opex)
+               + gas   (capex + opex + fuel + var_opex)
+               + grid interconnect (capex + opex)  ← sized to peak_grid_import_mw
+               + grid import energy cost            ← Σ max(0, price[t]) × import[t]
+
+    Parameters
+    ----------
+    grid_import_cost_yr   : annual grid energy purchase cost ($), using
+                            clipped-positive prices (no revenue from negative prices)
+    grid_import_mwh_yr    : annual grid energy imported (MWh) — reported metric
+    peak_grid_import_mw   : peak hourly grid import from dispatch (MW)
+                            used to size the interconnection infrastructure
+    """
+    fixed   = annualized_costs(iso, costs, S_mw, B_mwh, G_mw)
+    fuel    = fuel_cost_annual(iso, costs, gas_gen_mwh_yr)
+    gas_var = costs["gas_rice"]["opex_variable_per_mwh"] * gas_gen_mwh_yr
+
+    grid_cfg       = costs["grid_interconnect"]
+    mult           = iso["capex_multiplier"]
+    grid_cap_kw    = peak_grid_import_mw * 1000
+    grid_capex     = grid_cfg["capex_per_kw"] * grid_cap_kw * mult
+    grid_crf       = _crf(costs["common"]["discount_rate"], grid_cfg["lifetime_yr"])
+    grid_capex_ann = grid_capex * grid_crf
+    grid_opex_ann  = grid_cfg["opex_per_kw_yr"] * grid_cap_kw
+
+    total = (
+        fixed["total_fixed_ann"]
+        + fuel
+        + gas_var
+        + grid_capex_ann
+        + grid_opex_ann
+        + grid_import_cost_yr
+    )
+
+    slcoe = total / annual_load_mwh if annual_load_mwh > 0 else float("nan")
+
+    return {
+        "slcoe_per_mwh":          slcoe,
+        "total_annual_cost":      total,
+        "fuel_cost_ann":          fuel,
+        "gas_var_opex_ann":       gas_var,
+        "grid_capex_ann":         grid_capex_ann,
+        "grid_opex_ann":          grid_opex_ann,
+        "grid_import_cost_ann":   grid_import_cost_yr,
+        "grid_import_mwh_yr":     grid_import_mwh_yr,
+        **fixed,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Quick summary table (useful for Streamlit display)
 # ---------------------------------------------------------------------------

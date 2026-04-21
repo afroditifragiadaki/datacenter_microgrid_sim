@@ -295,6 +295,168 @@ def load_timeseries(processed_dir, year: int = 2024,
 
 
 # ---------------------------------------------------------------------------
+# Grid-connected dispatch
+# ---------------------------------------------------------------------------
+
+def dispatch_grid(
+    S_mw:                 float,
+    B_mwh:                float,
+    G_mw:                 float,
+    timeseries:           pd.DataFrame,
+    gas_marginal_per_mwh: float,
+    E0:                   float | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """
+    Run the hourly grid-connected dispatch for one (S, B, G) configuration.
+
+    Dispatch priority
+    -----------------
+    1. Solar → serve load directly
+    2. Excess solar → charge BESS (curtail any remainder)
+    3. Deficit after solar: BESS discharge
+    4. Remaining deficit: cheapest of gas vs grid each hour
+       - grid_price[t] <= gas_marginal  →  buy all from grid (gas = 0)
+       - gas_marginal  <  grid_price[t] →  gas up to G_mw, grid covers rest
+    Grid is treated as infinite capacity; unserved energy is always zero.
+
+    Parameters
+    ----------
+    timeseries : must have columns load_mw, solar_cf, eta_temp,
+                 grid_price_per_mwh
+    gas_marginal_per_mwh : ISO-specific gas short-run marginal cost
+                           = heat_rate × gas_price + var_opex  ($/MWh)
+    """
+    required = {"load_mw", "solar_cf", "eta_temp", "grid_price_per_mwh"}
+    missing  = required - set(timeseries.columns)
+    if missing:
+        raise ValueError(f"timeseries missing columns: {missing}")
+
+    load       = timeseries["load_mw"].to_numpy(dtype=float)
+    cf         = timeseries["solar_cf"].to_numpy(dtype=float)
+    eta_t      = timeseries["eta_temp"].to_numpy(dtype=float)
+    grid_price = timeseries["grid_price_per_mwh"].to_numpy(dtype=float)
+    n          = len(load)
+
+    P_bess_max = B_mwh / DURATION_H if B_mwh > 0 else 0.0
+    E_min      = SOC_MIN * B_mwh
+    E_max      = SOC_MAX * B_mwh
+    E          = E0 if E0 is not None else 0.5 * B_mwh
+
+    solar_potential = S_mw * cf
+
+    p_ch   = np.zeros(n)
+    p_dis  = np.zeros(n)
+    p_gas  = np.zeros(n)
+    p_grid = np.zeros(n)
+    p_curt = np.zeros(n)
+    soc    = np.zeros(n)
+
+    for t in range(n):
+        et      = max(eta_t[t], 1e-6)
+        solar_t = solar_potential[t]
+        net     = load[t] - solar_t
+
+        if net <= 0.0:
+            # Surplus solar: charge BESS, curtail remainder
+            excess  = -net
+            max_ch  = (
+                min(P_bess_max, max((E_max - E) / (ETA_CH * et), 0.0))
+                if B_mwh > 0 else 0.0
+            )
+            p_ch_t    = min(excess, max_ch)
+            E        += p_ch_t * ETA_CH * et
+            p_ch[t]   = p_ch_t
+            p_curt[t] = excess - p_ch_t
+        else:
+            # Deficit: BESS first, then cheapest of gas vs grid
+            max_dis = min(P_bess_max, max((E - E_min) * et * ETA_DIS, 0.0))
+            p_dis_t  = min(net, max_dis)
+            E       -= p_dis_t / (et * ETA_DIS)
+            p_dis[t] = p_dis_t
+
+            remaining = net - p_dis_t
+            if remaining > 0.0:
+                if grid_price[t] <= gas_marginal_per_mwh or G_mw == 0.0:
+                    # Grid is cheaper (or no gas installed)
+                    p_grid[t] = remaining
+                else:
+                    # Gas is cheaper up to its capacity; grid covers the rest
+                    p_gas[t]  = min(G_mw, remaining)
+                    p_grid[t] = max(remaining - p_gas[t], 0.0)
+
+        E = max(E_min, min(E_max, E))
+        soc[t] = E
+
+    results = pd.DataFrame({
+        "load_mw":            load,
+        "solar_gen_mw":       solar_potential,
+        "bess_charge_mw":     p_ch,
+        "bess_discharge_mw":  p_dis,
+        "gas_gen_mw":         p_gas,
+        "grid_import_mw":     p_grid,
+        "soc_mwh":            soc,
+        "curtailed_mw":       p_curt,
+        "net_load_mw":        load - solar_potential,
+        "grid_price_per_mwh": grid_price,
+    }, index=timeseries.index)
+
+    summary = _summarise_grid(results, S_mw, B_mwh, G_mw)
+    return results, summary
+
+
+def _summarise_grid(
+    r: pd.DataFrame,
+    S_mw: float,
+    B_mwh: float,
+    G_mw: float,
+) -> dict:
+    from models.gas_model import fuel_consumption, fuel_cost, co2_emissions
+
+    total_demand = r["load_mw"].sum()
+    solar_gen    = r["solar_gen_mw"].sum()
+    curtailed    = r["curtailed_mw"].sum()
+    solar_used   = solar_gen - curtailed
+    bess_dis     = r["bess_discharge_mw"].sum()
+    bess_ch      = r["bess_charge_mw"].sum()
+    gas_gen      = r["gas_gen_mw"].sum()
+    grid_import  = r["grid_import_mw"].sum()
+
+    grid_import_cost = float(
+        (r["grid_import_mw"] * r["grid_price_per_mwh"].clip(lower=0)).sum()
+    )
+
+    fuel  = fuel_consumption(r["gas_gen_mw"].to_numpy()).sum()
+    cost  = fuel_cost(r["gas_gen_mw"].to_numpy()).sum()
+    co2   = co2_emissions(r["gas_gen_mw"].to_numpy()).sum()
+
+    soc_pct = r["soc_mwh"] / B_mwh * 100 if B_mwh > 0 else r["soc_mwh"] * 0
+
+    return {
+        "S_mw": S_mw, "B_mwh": B_mwh, "G_mw": G_mw,
+        "total_demand_mwh":    total_demand,
+        "solar_used_mwh":      solar_used,
+        "curtailed_mwh":       curtailed,
+        "bess_discharge_mwh":  bess_dis,
+        "bess_charge_mwh":     bess_ch,
+        "gas_gen_mwh":         gas_gen,
+        "grid_import_mwh":     grid_import,
+        "grid_import_cost_usd": grid_import_cost,
+        "solar_share_pct":     solar_used   / total_demand * 100,
+        "bess_share_pct":      bess_dis     / total_demand * 100,
+        "gas_share_pct":       gas_gen      / total_demand * 100,
+        "grid_share_pct":      grid_import  / total_demand * 100,
+        "solar_curtailment_pct": curtailed / solar_gen * 100 if solar_gen > 0 else 0.0,
+        "bess_cycles_per_year":  bess_dis / B_mwh if B_mwh > 0 else 0.0,
+        "bess_soc_mean_pct":   soc_pct.mean(),
+        "bess_soc_min_pct":    soc_pct.min(),
+        "annual_fuel_mmbtu":   fuel,
+        "annual_fuel_cost_usd": cost,
+        "annual_co2_t":        co2,
+        "renewable_share_pct": (solar_used + bess_dis) / total_demand * 100,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

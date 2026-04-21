@@ -37,5 +37,11 @@
     "discount_rate": 0.08,
     "project_life_yr": 25,
     "description": "Unlevered real WACC. Project life used for CRF calculation across all technologies (shorter-lived assets get replacement cost annualized over project life)."
+  },
+  "grid_interconnect": {
+    "capex_per_kw": 100,
+    "opex_per_kw_yr": 2,
+    "lifetime_yr": 25,
+    "description": "Grid interconnection infrastructure sized to peak grid import MW. Covers substation upgrades, switchgear, protection relays, metering, and soft costs. Apply ISO capex_multiplier."
   }
 }
