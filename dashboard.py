@@ -1114,206 +1114,295 @@ def _page_methodology() -> None:
         Methodology
       </div>
       <div style="font-size:14px;color:{MUTED};line-height:1.75;
-                  margin-bottom:56px;max-width:680px">
-        We model a <strong style="color:{TEXT}">behind-the-meter microgrid</strong>
-        serving a collocated datacenter using three energy assets — Solar PV, a
-        Battery Energy Storage System (BESS), and a gas-fired backup generator.
-        For every US electricity market (ISO/RTO), we find the combination of
-        asset sizes that minimises total electricity cost while meeting a
-        user-defined renewable energy target.
+                  margin-bottom:56px;max-width:720px">
+        We model <strong style="color:{TEXT}">two energy strategies</strong> for a
+        behind-the-meter collocated datacenter and compare them across every major
+        US electricity market. The <strong style="color:{C_SOLAR}">Microgrid</strong>
+        operates fully islanded with Solar PV, BESS, and gas backup.
+        The <strong style="color:{C_GRID}">Grid-Connected</strong> model adds a
+        utility connection and dispatches gas or grid each hour based on whichever
+        is cheaper at that moment. For both models we find the asset sizes that
+        minimise total cost while meeting a user-defined renewable energy target.
       </div>
     </div>
     <div style="height:1px;background:{BORDER};margin-bottom:48px"></div>
     """, unsafe_allow_html=True)
 
-    # ── Section 1: Pipeline flowchart ─────────────────────────────────────────
-    _, sec_col, _ = st.columns([1, 2.4, 1])
+    # ── Section 1: Two pipelines side-by-side ────────────────────────────────
+    st.markdown(f"""
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                text-transform:uppercase;color:{MUTED};margin-bottom:28px">
+      Optimization Pipelines
+    </div>
+    """, unsafe_allow_html=True)
 
-    with sec_col:
+    mg_col, gap_col, gr_col = st.columns([5, 0.3, 5])
+
+    with mg_col:
         st.markdown(f"""
-        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
-                    text-transform:uppercase;color:{MUTED};
-                    padding-bottom:16px;margin-bottom:20px;
-                    border-bottom:1px solid {BORDER}">
-          Optimization Pipeline
+        <div style="font-size:10px;font-weight:600;letter-spacing:0.16em;
+                    text-transform:uppercase;color:{C_SOLAR};
+                    border-bottom:2px solid {C_SOLAR};padding-bottom:10px;
+                    margin-bottom:18px">
+          Model A — Microgrid (Islanded)
         </div>
         {flow_box("1", "User Inputs",
-            "IT load (MW) and minimum renewable share (%) set the problem scope "
-            "and ESG constraint for the market comparison.")}
+            "IT load (MW) and minimum on-site renewable share (%) define "
+            "the scope and ESG constraint.")}
         {arrow()}
-        {flow_box("2", "Load Market Data",
-            "For each ISO/RTO: hourly solar generation profiles (PVWatts TMY), "
-            "regional gas prices (EIA STEO), and technology capital costs "
-            "(NREL ATB 2025) are pulled in.", color=BORDER)}
+        {flow_box("2", "Weather & Solar",
+            "Open-Meteo ERA5 hourly temperature → PUE-scaled load. "
+            "PVWatts V8 TMY → hourly solar capacity factor.",
+            color=BORDER)}
         {arrow()}
-        {flow_box("3", "Grid Search over (S, B, G)",
-            "We sweep across hundreds of combinations of Solar MW "
-            "<em>(S)</em>, BESS MWh <em>(B)</em>, and Gas MW <em>(G)</em>. "
-            "Each triplet is a candidate microgrid design.",
+        {flow_box("3", "Reliability Surface",
+            "Grid search over Solar MW × BESS MWh. For each pair, dispatch "
+            "determines the minimum gas MW (G_min) needed for zero unserved "
+            "energy. This enforces 100% reliability.",
             color=ACCENT, accent=ACCENT)}
         {arrow()}
-        {flow_box("4", "Hourly Dispatch Simulation",
-            "For each (S, B, G) candidate, 8,760 hourly timesteps simulate "
-            "exactly how the site is powered throughout the year. "
-            "See the dispatch logic below.", color=ACCENT, accent=ACCENT)}
+        {flow_box("4", "sLCOE Surface",
+            "For each feasible (S, B, G_min) triplet, compute annualised "
+            "Solar + BESS + Gas costs ÷ annual demand.",
+            color=ACCENT, accent=ACCENT)}
         {arrow()}
-        {flow_box("5", "Feasibility Filter",
-            "Designs where the simulated renewable share is below the user's "
-            "floor are discarded. Only ESG-compliant designs proceed.")}
-        {arrow()}
-        {flow_box("6", "Select Minimum sLCOE",
-            "The surviving design with the lowest System LCOE ($/MWh) is "
-            "the constrained optimum — the cheapest green solution.",
+        {flow_box("5", "Constrained Optimum",
+            "Filter to designs meeting the renewable floor. "
+            "Return the minimum-sLCOE survivor.",
             color=C_SOLAR, accent=C_SOLAR)}
         """, unsafe_allow_html=True)
 
-    # ── Section 2: sLCOE formula ───────────────────────────────────────────────
+    with gr_col:
+        st.markdown(f"""
+        <div style="font-size:10px;font-weight:600;letter-spacing:0.16em;
+                    text-transform:uppercase;color:{C_GRID};
+                    border-bottom:2px solid {C_GRID};padding-bottom:10px;
+                    margin-bottom:18px">
+          Model B — Grid-Connected
+        </div>
+        {flow_box("1", "Same User Inputs",
+            "Same IT load and renewable floor, applied consistently "
+            "so both models are directly comparable.")}
+        {arrow()}
+        {flow_box("2", "Weather, Solar + Grid Prices",
+            "Same weather and solar as Model A, plus real 2024 hourly "
+            "day-ahead LMP fetched from each ISO's public API "
+            "via gridstatus.",
+            color=BORDER)}
+        {arrow()}
+        {flow_box("3", "Grid Search over (S, B, G)",
+            "Same Solar × BESS grid, but G (gas) is now a free variable "
+            "from 0 MW up — grid provides unlimited backup so no minimum "
+            "gas constraint is imposed.",
+            color=ACCENT, accent=ACCENT)}
+        {arrow()}
+        {flow_box("4", "Grid sLCOE Surface",
+            "For each (S, B, G) triplet, dispatch with price-optimal "
+            "gas vs grid selection each hour. Compute Solar + BESS + Gas "
+            "+ Grid Interconnect + Grid Energy costs ÷ annual demand.",
+            color=ACCENT, accent=ACCENT)}
+        {arrow()}
+        {flow_box("5", "Constrained Optimum",
+            "Same renewable floor filter (on-site solar+BESS only). "
+            "Return minimum-sLCOE design and compare to Model A.",
+            color=C_GRID, accent=C_GRID)}
+        """, unsafe_allow_html=True)
+
+    # ── Section 2: sLCOE formulas ─────────────────────────────────────────────
     st.markdown(
         f'<div style="height:1px;background:{BORDER};margin:48px 0 40px"></div>',
         unsafe_allow_html=True,
     )
 
-    _, sec_col2, _ = st.columns([1, 2.4, 1])
-
-    with sec_col2:
-        st.markdown(f"""
-        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
-                    text-transform:uppercase;color:{MUTED};
-                    padding-bottom:16px;margin-bottom:20px;
-                    border-bottom:1px solid {BORDER}">
-          System LCOE Formula
-        </div>
-
-        <div style="font-size:12px;color:{MUTED};line-height:1.8;margin-bottom:24px">
-          The <strong style="color:{TEXT}">System Levelised Cost of Energy (sLCOE)</strong>
-          expresses the all-in cost of the microgrid as a single $/MWh number,
-          directly comparable across markets and designs. It annualises capital
-          costs, adds operating costs, and divides by annual energy delivered.
-        </div>
-
-        <div style="background:{SURFACE};border:1px solid {BORDER};
-                    padding:24px;margin-bottom:28px;font-family:monospace">
-          <div style="font-size:11px;color:{MUTED};margin-bottom:16px;
-                      letter-spacing:0.08em">sLCOE  =  Numerator / Annual Demand</div>
-          <div style="height:1px;background:{BORDER};margin-bottom:16px"></div>
-          <div style="font-size:12px;color:{MUTED};line-height:2.2">
-            <span style="color:{C_SOLAR}">Solar CAPEX × FCR</span>
-            &nbsp;+&nbsp;
-            <span style="color:{C_SOLAR}">Solar O&amp;M</span><br>
-            +&nbsp;
-            <span style="color:{C_BESS}">BESS CAPEX × FCR</span>
-            &nbsp;+&nbsp;
-            <span style="color:{C_BESS}">BESS O&amp;M</span><br>
-            +&nbsp;
-            <span style="color:{C_GAS}">Gas CAPEX × FCR</span>
-            &nbsp;+&nbsp;
-            <span style="color:{C_GAS}">Gas O&amp;M</span><br>
-            +&nbsp;
-            <span style="color:{C_GAS}">Gas Price × Heat Rate × Gas Gen</span>
-          </div>
-          <div style="height:1px;background:{BORDER};margin-top:16px;margin-bottom:16px"></div>
-          <div style="font-size:11px;color:{MUTED}">
-            FCR&nbsp;=&nbsp;
-            <span style="color:{TEXT}">WACC × (1+WACC)ⁿ / ((1+WACC)ⁿ − 1)</span>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;
-                    gap:10px;margin-bottom:28px">
-          <div style="background:{SURFACE};border:1px solid {BORDER};padding:14px 16px">
-            <div style="font-size:9px;letter-spacing:0.14em;text-transform:uppercase;
-                        color:{MUTED};margin-bottom:6px">WACC</div>
-            <div style="font-size:22px;font-weight:300;color:{TEXT}">7%</div>
-          </div>
-          <div style="background:{SURFACE};border:1px solid {BORDER};padding:14px 16px">
-            <div style="font-size:9px;letter-spacing:0.14em;text-transform:uppercase;
-                        color:{MUTED};margin-bottom:6px">Project Life</div>
-            <div style="font-size:22px;font-weight:300;color:{TEXT}">{PROJECT_LIFE} yr</div>
-          </div>
-          <div style="background:{SURFACE};border:1px solid {BORDER};padding:14px 16px">
-            <div style="font-size:9px;letter-spacing:0.14em;text-transform:uppercase;
-                        color:{MUTED};margin-bottom:6px">Fixed Charge Rate</div>
-            <div style="font-size:22px;font-weight:300;color:{TEXT}">8.58%</div>
-          </div>
-          <div style="background:{SURFACE};border:1px solid {BORDER};padding:14px 16px">
-            <div style="font-size:9px;letter-spacing:0.14em;text-transform:uppercase;
-                        color:{MUTED};margin-bottom:6px">Gas Heat Rate</div>
-            <div style="font-size:22px;font-weight:300;color:{TEXT}">{HEAT_RATE} MMBtu/MWh</div>
-          </div>
-        </div>
-
-        <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
-                    text-transform:uppercase;color:{MUTED};
-                    padding-bottom:16px;margin-bottom:20px;
-                    border-top:1px solid {BORDER};padding-top:20px">
-          Key Assumptions
-        </div>
-        <div style="font-size:12px;color:{MUTED};line-height:2.2">
-          Unsubsidised — pre-IRA Investment Tax Credit<br>
-          PUE 1.35 (datacenter power usage effectiveness)<br>
-          BESS round-trip efficiency 85%<br>
-          Solar DC:AC ratio 1.3 · fixed-tilt, no tracking<br>
-          Gas generator: RICE technology, fully flexible<br>
-          All costs in real 2024 USD
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── Section 2: Dispatch flowchart ─────────────────────────────────────────
     st.markdown(f"""
     <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
-                text-transform:uppercase;color:{MUTED};
-                border-top:1px solid {BORDER};
-                padding-top:28px;margin-top:40px;margin-bottom:24px">
-      Hourly Dispatch Logic — What Happens Each Hour of the Year
+                text-transform:uppercase;color:{MUTED};margin-bottom:28px">
+      System LCOE Formulas
     </div>
     <div style="font-size:13px;color:{MUTED};line-height:1.8;
-                margin-bottom:28px;max-width:700px">
-      The dispatch simulation runs 8,760 times (once per hour of the year).
-      Each hour it decides, in priority order, how to power the datacenter:
+                margin-bottom:32px;max-width:720px">
+      The <strong style="color:{TEXT}">System Levelised Cost of Energy (sLCOE)</strong>
+      annualises all capital costs via a Fixed Charge Rate (FCR), adds fixed and
+      variable operating costs, and divides by annual site energy demand — giving
+      a single $/MWh figure directly comparable across markets and designs.
     </div>
     """, unsafe_allow_html=True)
 
-    d1, d2, d3, d4, d5 = st.columns(5)
-    dispatch_steps = [
-        (C_SOLAR, "☀", "Solar First",
-         "Available solar output (from PVWatts hourly profile) serves the "
-         "datacenter load directly. It's free once built — always used first."),
-        (C_BESS,  "⚡", "Charge or Discharge BESS",
-         "If solar > load → surplus charges the battery (up to capacity). "
-         "If solar < load → battery discharges to cover the gap "
-         "(down to 10% state-of-charge floor)."),
-        (C_GAS,   "🔥", "Gas Covers the Rest",
-         "Any remaining unmet load is served by the gas generator. "
-         "It is fully flexible — ramps up and down every hour with no "
-         "minimum run time constraint."),
-        (MUTED,   "📊", "Track Renewable Share",
-         "After each hour, solar + BESS contribution is logged. "
-         "At year-end, annual renewable share = (solar MWh + BESS MWh) "
-         "÷ total demand MWh."),
-        (ACCENT,  "✓", "Feasibility Check",
-         "If annual renewable share ≥ user floor → design is feasible. "
-         "Its sLCOE is computed and added to the solution surface for "
-         "optimisation."),
+    f1, fgap, f2 = st.columns([5, 0.3, 5])
+
+    with f1:
+        st.markdown(f"""
+        <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;
+                    text-transform:uppercase;color:{C_SOLAR};margin-bottom:14px">
+          Microgrid sLCOE
+        </div>
+        <div style="background:{SURFACE};border:1px solid {BORDER};
+                    padding:22px;font-family:monospace;font-size:12px;
+                    color:{MUTED};line-height:2.3">
+          <span style="color:{C_SOLAR}">Solar CAPEX × FCR + Solar O&amp;M</span><br>
+          + <span style="color:{C_BESS}">BESS CAPEX × FCR + BESS O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas CAPEX × FCR + Gas O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas Fuel + Gas Var O&amp;M</span><br>
+          <div style="height:1px;background:{BORDER};margin:12px 0"></div>
+          ÷ &nbsp;Annual Demand MWh
+        </div>
+        <div style="font-size:11px;color:{MUTED};margin-top:12px;line-height:1.8">
+          Gas is sized to G_min — the minimum capacity that guarantees
+          zero unserved energy regardless of solar or BESS conditions.
+        </div>
+        """, unsafe_allow_html=True)
+
+    with f2:
+        st.markdown(f"""
+        <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;
+                    text-transform:uppercase;color:{C_GRID};margin-bottom:14px">
+          Grid-Connected sLCOE
+        </div>
+        <div style="background:{SURFACE};border:1px solid {BORDER};
+                    padding:22px;font-family:monospace;font-size:12px;
+                    color:{MUTED};line-height:2.3">
+          <span style="color:{C_SOLAR}">Solar CAPEX × FCR + Solar O&amp;M</span><br>
+          + <span style="color:{C_BESS}">BESS CAPEX × FCR + BESS O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas CAPEX × FCR + Gas O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas Fuel + Gas Var O&amp;M</span><br>
+          + <span style="color:{C_GRID}">Grid Interconnect CAPEX × FCR</span><br>
+          + <span style="color:{C_GRID}">Grid Interconnect O&amp;M</span><br>
+          + <span style="color:{C_GRID}">Σ price[t] × grid_import[t]</span><br>
+          <div style="height:1px;background:{BORDER};margin:12px 0"></div>
+          ÷ &nbsp;Annual Demand MWh
+        </div>
+        <div style="font-size:11px;color:{MUTED};margin-top:12px;line-height:1.8">
+          Grid interconnect sized to peak actual grid import MW.
+          Negative prices are floored at $0 (no revenue from export modelled).
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Key parameters grid
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    p1, p2, p3, p4, p5, p6 = st.columns(6)
+    for col, label, value in [
+        (p1, "WACC",              "7%"),
+        (p2, "Project Life",      f"{PROJECT_LIFE} yr"),
+        (p3, "FCR",               "8.58%"),
+        (p4, "Gas Heat Rate",     f"{HEAT_RATE} MMBtu/MWh"),
+        (p5, "Grid Interconnect", "$100/kW"),
+        (p6, "PUE",               "1.35"),
+    ]:
+        col.markdown(f"""
+        <div style="background:{SURFACE};border:1px solid {BORDER};
+                    padding:14px 16px">
+          <div style="font-size:9px;letter-spacing:0.14em;text-transform:uppercase;
+                      color:{MUTED};margin-bottom:6px">{label}</div>
+          <div style="font-size:18px;font-weight:300;color:{TEXT}">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div style="font-size:11px;color:{MUTED};margin-top:16px;line-height:1.8">
+      FCR = WACC × (1+WACC)ⁿ / ((1+WACC)ⁿ − 1) &nbsp;·&nbsp;
+      Unsubsidised (pre-IRA ITC) &nbsp;·&nbsp; All costs in real 2024 USD &nbsp;·&nbsp;
+      BESS round-trip efficiency 85% &nbsp;·&nbsp; Solar DC:AC ratio 1.3, fixed-tilt
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Section 3: Dispatch logic ─────────────────────────────────────────────
+    st.markdown(
+        f'<div style="height:1px;background:{BORDER};margin:48px 0 40px"></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(f"""
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
+                text-transform:uppercase;color:{MUTED};margin-bottom:10px">
+      Hourly Dispatch Logic — 8,784 Hours per Year
+    </div>
+    <div style="font-size:13px;color:{MUTED};line-height:1.8;
+                margin-bottom:32px;max-width:720px">
+      Each hour the simulator decides how to power the datacenter.
+      Both models share the same first two steps; they diverge on how to
+      handle residual load after BESS.
+    </div>
+    """, unsafe_allow_html=True)
+
+    da, db, dc, dd1, dd2 = st.columns(5)
+    shared = [
+        (C_SOLAR, "1", "Solar First",
+         "Solar output (PVWatts hourly CF × installed MW) serves load "
+         "directly. Zero marginal cost — always dispatched first."),
+        (C_BESS, "2", "BESS Charge / Discharge",
+         "Surplus solar charges the battery (up to power and SoC limits). "
+         "Deficit draws the battery down to a 20% SoC floor. "
+         "Temperature-adjusted round-trip efficiency applied each hour."),
     ]
-    for col, (color, icon, title, body) in zip(
-            [d1, d2, d3, d4, d5], dispatch_steps):
+    mg_only = [
+        (C_GAS, "3A", "Gas Fills the Gap",
+         "<em>Microgrid only.</em> All remaining unmet load goes to gas. "
+         "Gas must be sized large enough to guarantee zero unserved energy "
+         "across all 8,784 hours — this is the G_min constraint."),
+    ]
+    gr_only = [
+        (C_GAS, "3B", "Gas or Grid — Cheapest Wins",
+         "<em>Grid-connected only.</em> Compare gas short-run marginal cost "
+         "(fuel + var O&amp;M) vs grid price[t] each hour. Cheaper source "
+         "serves remaining load. Gas is capped at G_mw; grid covers any rest."),
+        (C_GRID, "4", "Annual Grid Import",
+         "Σ grid_import[t] logged across all hours. Used as a metric and "
+         "as the basis for grid interconnection sizing (peak import MW)."),
+    ]
+
+    for col, (color, num, title, body) in zip([da, db], shared):
         col.markdown(f"""
         <div style="border:1px solid {BORDER};padding:20px 18px;height:100%">
-          <div style="font-size:20px;margin-bottom:12px">{icon}</div>
           <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;
-                      text-transform:uppercase;color:{color};margin-bottom:8px">
-            {title}
+                      text-transform:uppercase;color:{MUTED};margin-bottom:8px">
+            Step {num}
           </div>
+          <div style="font-size:12px;font-weight:500;color:{TEXT};
+                      margin-bottom:8px">{title}</div>
           <div style="font-size:11px;color:{MUTED};line-height:1.8">{body}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # ── Section 3: Data sources ───────────────────────────────────────────────
+    for col, (color, num, title, body) in zip([dc], mg_only):
+        col.markdown(f"""
+        <div style="border:1px solid {color};padding:20px 18px;height:100%">
+          <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;
+                      text-transform:uppercase;color:{color};margin-bottom:8px">
+            Step {num}
+          </div>
+          <div style="font-size:12px;font-weight:500;color:{TEXT};
+                      margin-bottom:8px">{title}</div>
+          <div style="font-size:11px;color:{MUTED};line-height:1.8">{body}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    for col, (color, num, title, body) in zip([dd1, dd2], gr_only):
+        col.markdown(f"""
+        <div style="border:1px solid {color};padding:20px 18px;height:100%">
+          <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;
+                      text-transform:uppercase;color:{color};margin-bottom:8px">
+            Step {num}
+          </div>
+          <div style="font-size:12px;font-weight:500;color:{TEXT};
+                      margin-bottom:8px">{title}</div>
+          <div style="font-size:11px;color:{MUTED};line-height:1.8">{body}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     st.markdown(f"""
+    <div style="font-size:11px;color:{MUTED};margin-top:14px;line-height:1.9;
+                border-left:3px solid {BORDER};padding-left:16px">
+      <strong style="color:{TEXT}">Renewable share</strong> is defined identically
+      in both models: (solar MWh used + BESS discharge MWh) ÷ total demand MWh.
+      Grid imports and gas are both counted as non-renewable, so the renewable floor
+      binds on on-site clean generation only.
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Section 4: Data sources ───────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="height:1px;background:{BORDER};margin:48px 0 32px"></div>
     <div style="font-size:9px;font-weight:600;letter-spacing:0.18em;
-                text-transform:uppercase;color:{MUTED};
-                border-top:1px solid {BORDER};
-                padding-top:28px;margin-top:40px;margin-bottom:24px">
+                text-transform:uppercase;color:{MUTED};margin-bottom:24px">
       Data Sources
     </div>
     """, unsafe_allow_html=True)
@@ -1323,7 +1412,8 @@ def _page_methodology() -> None:
     sources = [
         ("NREL ATB 2025",
          "Technology capital and O&M costs for utility-scale Solar PV, "
-         "Li-ion BESS, and gas RICE — moderate scenario.",
+         "Li-ion BESS, and gas RICE — moderate scenario. Grid interconnection "
+         "cost proxy: $100/kW installed.",
          "https://atb.nrel.gov/", "CAPEX · O&M"),
         ("EIA 2026 Short-Term Energy Outlook",
          "Regional natural gas wellhead price forecasts used as fuel cost "
@@ -1335,18 +1425,18 @@ def _page_methodology() -> None:
          "https://pvwatts.nrel.gov/", "Solar Resource"),
         ("Open-Meteo ERA5",
          "Hourly dry-bulb temperature reanalysis data for 2024, used to "
-         "estimate datacenter cooling load and PUE adjustments.",
+         "estimate datacenter cooling load and BESS thermal efficiency.",
          "https://open-meteo.com/", "Temperature"),
+        ("ISO Public APIs — gridstatus",
+         "Real 2024 hourly day-ahead LMP data fetched from ERCOT, CAISO, PJM, "
+         "and NYISO via the open-source gridstatus library. MISO, ISONE, and SPP "
+         "use calibrated synthetic profiles where the API was too slow.",
+         "https://github.com/gridstatus/gridstatus", "Grid Prices"),
         ("Lazard LCOE+ 18.0",
          "Independent levelised cost benchmarks used to cross-validate our "
          "sLCOE results against industry consensus estimates.",
          "https://www.lazard.com/research-insights/levelized-cost-of-energyplus/",
          "Benchmarks"),
-        ("US ISO/RTO Markets",
-         "Six markets modelled: ERCOT, CAISO, PJM, MISO, NYISO, ISO-NE — "
-         "covering distinct climate zones, gas prices, and grid mix.",
-         "https://www.ferc.gov/industries-data/electric/power-sales-and-markets/rtos-and-isos",
-         "Markets"),
     ]
     for i, (title, desc, url, tag) in enumerate(sources):
         with col_sources[i % 3]:

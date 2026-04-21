@@ -2,10 +2,15 @@
 
 **ELEN4510 Grid Modernization & Clean Tech — Columbia University**
 
-An interactive optimization tool that models the optimal **Solar PV + BESS + Natural Gas**
-microgrid for a behind-the-meter collocated datacenter. For each of the major US electricity
-markets (ISO/RTOs), it finds the lowest-cost asset configuration that satisfies a
-user-defined renewable energy share target.
+An interactive optimization tool that models and **compares two energy strategies** for a
+behind-the-meter collocated datacenter:
+
+- **Microgrid** — fully islanded Solar PV + BESS + Gas, no grid connection
+- **Grid-Connected** — Solar PV + BESS + Gas + utility grid, with hourly price-optimal dispatch
+
+For each of the seven major US electricity markets (ISO/RTOs), the tool finds the
+lowest-cost asset configuration for both strategies under a user-defined renewable
+energy share target, then shows which option is cheaper and by how much.
 
 ---
 
@@ -22,15 +27,13 @@ user-defined renewable energy share target.
 
 ## What It Does
 
-Given a datacenter IT load (MW) and a minimum renewable energy share (%), the tool:
+Given a datacenter IT load (MW) and a minimum on-site renewable share (%), the tool:
 
-1. Searches across hundreds of Solar + BESS + Gas size combinations
-2. Simulates hourly dispatch for each combination across 8,760 hours of the year
-3. Filters out designs that don't meet the renewable floor
-4. Ranks the feasible designs by System LCOE ($/MWh) and returns the cheapest option
-
-This is repeated for every supported ISO/RTO market, enabling direct cost comparison
-across regions with different solar resources, gas prices, and construction costs.
+1. Searches across Solar + BESS + Gas size combinations for both models
+2. Simulates 8,784 hours of hourly dispatch for each combination
+3. Filters out designs below the renewable floor
+4. Returns the minimum-sLCOE design per market per model
+5. Compares microgrid vs grid-connected sLCOE across all seven markets
 
 ---
 
@@ -43,55 +46,73 @@ pip install -r requirements.txt
 streamlit run dashboard.py
 ```
 
-The dashboard has three tabs:
-
-| Tab | Description |
-|-----|-------------|
-| **Optimizer** | Configure IT load and renewable floor → compare all markets → deep dive into any market's cost breakdown, energy mix, and gas price sensitivity |
-| **Methodology** | Step-by-step pipeline flowchart, sLCOE formula, hourly dispatch logic, and linked data sources |
-| **Team** | Project team and contact information |
-
-Get a free NREL API key at [developer.nrel.gov](https://developer.nrel.gov/signup/) and add it to `config/secrets.env`:
+Add your NREL API key to `config/secrets.env` (free at [developer.nrel.gov](https://developer.nrel.gov/signup/)):
 
 ```
 NREL_API_KEY=your_key_here
 NREL_EMAIL=you@example.com
 ```
 
+| Tab | Description |
+|-----|-------------|
+| **Optimizer** | Configure IT load and renewable floor → compare all markets (microgrid + grid) → deep dive into any market's cost breakdown, energy mix, and grid-connected comparison |
+| **Methodology** | Pipeline flowcharts, sLCOE formulas, dispatch logic for both models, data sources |
+| **Team** | Project team and contact information |
+
 ---
 
 ## Methodology
 
-### System LCOE (sLCOE)
+### Two Models
 
-All capital costs are annualised using a Fixed Charge Rate (FCR) derived from a
-**7% WACC** over a **25-year project life** (FCR ≈ 8.58%). Annual O&M is added,
-then gas fuel costs. The total is divided by annual site demand:
+#### 1 — Microgrid (fully islanded)
 
+The site operates with no grid connection. Solar, BESS, and gas must cover 100% of load.
+Gas is sized to the minimum capacity needed to guarantee zero unserved energy.
+
+**Dispatch priority each hour:**
+1. Solar → serves load directly
+2. Surplus solar → charges BESS
+3. Deficit after solar → BESS discharges
+4. Remaining deficit → gas fills the gap
+
+#### 2 — Grid-Connected
+
+The site has a utility grid connection. Solar and BESS operate the same way, but for any
+remaining deficit, the cheaper of gas or grid is used each hour based on the real-time
+day-ahead LMP.
+
+**Dispatch priority each hour:**
+1. Solar → serves load directly
+2. Surplus solar → charges BESS
+3. Deficit after solar → BESS discharges
+4. Remaining deficit → **compare gas marginal cost vs grid price[t]:**
+   - If grid price ≤ gas marginal → buy from grid
+   - If gas marginal < grid price → dispatch gas up to capacity, grid covers any remainder
+
+Gas capacity is a free design variable (can be 0 — grid is the infinite backstop).
+
+### System LCOE Formulas
+
+**Microgrid sLCOE:**
 ```
 sLCOE = ( Solar CAPEX×FCR + Solar O&M
         + BESS CAPEX×FCR  + BESS O&M
-        + Gas CAPEX×FCR   + Gas O&M
-        + Gas Price × Heat Rate × Gas Generation ) / Annual Demand MWh
+        + Gas CAPEX×FCR   + Gas O&M  + Gas Fuel + Gas Var O&M
+        ) / Annual Demand MWh
 ```
 
-Costs are unsubsidised (pre-IRA Investment Tax Credit). All values in real 2024 USD.
+**Grid-Connected sLCOE:**
+```
+sLCOE = ( Solar CAPEX×FCR + Solar O&M
+        + BESS CAPEX×FCR  + BESS O&M
+        + Gas CAPEX×FCR   + Gas O&M  + Gas Fuel + Gas Var O&M
+        + Grid Interconnect CAPEX×FCR + Grid Interconnect O&M
+        + Σ max(0, grid_price[t]) × grid_import[t]
+        ) / Annual Demand MWh
+```
 
-### Hourly Dispatch Logic
-
-Each of the 8,760 hours of the year is simulated with a simple priority stack:
-
-1. **Solar first** — available solar output (PVWatts TMY profile) serves load directly
-2. **BESS** — surplus solar charges the battery; deficits draw it down (10% SoC floor)
-3. **Gas backup** — any remaining unmet load is covered by the gas generator
-
-At year-end, renewable share = (solar MWh + BESS-served MWh) ÷ total demand MWh.
-
-### Optimization
-
-A grid search sweeps Solar MW, BESS MWh, and Gas MW. For each triplet the dispatch
-simulation runs in full. Designs below the renewable floor are discarded; the
-minimum-sLCOE survivor is reported as the constrained optimum.
+FCR = WACC × (1+WACC)ⁿ / ((1+WACC)ⁿ − 1)
 
 ### Key Assumptions
 
@@ -103,33 +124,37 @@ minimum-sLCOE survivor is reported as the constrained optimum.
 | BESS round-trip efficiency | 85% |
 | Solar DC:AC ratio | 1.3, fixed-tilt |
 | Gas heat rate | 9.0 MMBtu/MWh (RICE) |
-| Costs | Unsubsidised, real 2024 USD |
+| Grid interconnect | $100/kW capex, $2/kW-yr O&M |
+| Costs | Unsubsidised (pre-IRA ITC), real 2024 USD |
 
 ---
 
 ## Supported Markets
 
-| ISO | Location | Gas ($/MMBtu) | CAPEX Multiplier |
-|-----|----------|--------------|-----------------|
-| ERCOT | Dallas-Fort Worth, TX | $2.50 | 1.00 |
-| PJM | Pittsburgh, PA | $3.20 | 1.05 |
-| MISO | Indianapolis, IN | $3.00 | 1.03 |
-| CAISO | Fresno, CA | $5.00 | 1.15 |
-| SPP | Oklahoma City, OK | $2.80 | 1.00 |
-| NYISO | Albany, NY | $5.50 | 1.18 |
-| ISONE | Hartford, CT | $6.00 | 1.20 |
+| ISO | Location | Gas ($/MMBtu) | CAPEX Mult. | 2024 DA Price |
+|-----|----------|--------------|-------------|---------------|
+| ERCOT | Dallas-Fort Worth, TX | $2.50 | 1.00 | $28.90/MWh (real) |
+| PJM | Pittsburgh, PA | $3.20 | 1.05 | $27.36/MWh (real) |
+| MISO | Indianapolis, IN | $3.00 | 1.03 | $45.00/MWh (synthetic) |
+| CAISO | Fresno, CA | $5.00 | 1.15 | $37.94/MWh (real) |
+| SPP | Oklahoma City, OK | $2.80 | 1.00 | $38.00/MWh (synthetic) |
+| NYISO | Albany, NY | $5.50 | 1.18 | $36.08/MWh (real) |
+| ISONE | Hartford, CT | $6.00 | 1.20 | $65.00/MWh (synthetic) |
+
+*Real = fetched from ISO public API via gridstatus. Synthetic = calibrated profile where the API was too slow or incomplete.*
 
 ---
 
 ## Data Sources
 
-| Data | Source | URL |
-|------|--------|-----|
-| Solar generation | NREL PVWatts V8 / NSRDB TMY | [pvwatts.nrel.gov](https://pvwatts.nrel.gov/) |
-| Technology costs (Solar, BESS, Gas) | NREL ATB 2025 — Moderate scenario | [atb.nrel.gov](https://atb.nrel.gov/) |
-| LCOE benchmarks | Lazard LCOE+ 18.0 | [lazard.com](https://www.lazard.com/research-insights/levelized-cost-of-energyplus/) |
-| Regional gas prices | EIA 2026 Short-Term Energy Outlook | [eia.gov/outlooks/steo](https://www.eia.gov/outlooks/steo/) |
-| Hourly temperature | Open-Meteo ERA5 reanalysis, 2024 | [open-meteo.com](https://open-meteo.com/) |
+| Data | Source |
+|------|--------|
+| Solar generation | NREL PVWatts V8 / NSRDB TMY |
+| Technology costs | NREL ATB 2025 — Moderate scenario |
+| LCOE benchmarks | Lazard LCOE+ 18.0 |
+| Regional gas prices | EIA 2026 Short-Term Energy Outlook |
+| Hourly temperature | Open-Meteo ERA5 reanalysis, 2024 |
+| Day-ahead LMP prices | ISO public APIs via gridstatus 0.21 (ERCOT, CAISO, PJM, NYISO); calibrated synthetic for MISO, ISONE, SPP |
 
 ---
 
@@ -138,34 +163,27 @@ minimum-sLCOE survivor is reported as the constrained optimum.
 ```
 datacenter_microgrid_sim/
 ├── models/
-│   ├── demand_model.py       PUE(T) model; site load timeseries
-│   ├── solar_model.py        PVWatts capacity factor profiles
-│   ├── bess_model.py         BESS state equation; unit sizing
-│   ├── gas_model.py          RICE dispatch; fuel cost
-│   ├── dispatcher.py         8,760-hour greedy dispatch loop
-│   ├── lcoe_model.py         FCR; annualised cost functions; sLCOE
-│   ├── iso_registry.py       ISO/RTO lookup table and regional parameters
-│   └── pipeline.py           On-demand pipeline orchestrator per ISO
+│   ├── demand_model.py        PUE(T) model; site load timeseries
+│   ├── bess_model.py          BESS state equation; unit sizing
+│   ├── gas_model.py           RICE dispatch; fuel cost
+│   ├── dispatcher.py          8,784-hour dispatch loop (microgrid + grid-connected)
+│   ├── grid_prices_model.py   Real DA LMP fetcher (gridstatus) with synthetic fallback
+│   ├── iso_registry.py        ISO/RTO lookup; sLCOE + grid sLCOE cost functions
+│   ├── pipeline.py            Microgrid pipeline orchestrator per ISO
+│   └── pipeline_grid.py       Grid-connected pipeline orchestrator per ISO
 │
-├── scripts/
-│   ├── 01_build_demand.py    Weather fetch; PUE model; load timeseries
-│   ├── 02_build_solar.py     PVWatts V8 API; solar capacity factor
-│   ├── 03_build_bess.py      Temperature-adjusted efficiency timeseries
-│   ├── 04_build_gas.py       Gas model characterisation
-│   ├── 05_run_dispatch.py    Dispatch validation
-│   ├── 06_solve_reliability.py  Minimum gas capacity surface
-│   └── 07_optimize_slcoe.py  sLCOE surface and constrained optimum
+├── scripts/                   Standalone analysis scripts (exploratory use)
 │
 ├── config/
-│   ├── iso_registry.json     ISO/RTO parameters
-│   ├── technology_costs.json CAPEX/OPEX baselines
-│   └── secrets.env           NREL API key (gitignored)
+│   ├── iso_registry.json      ISO/RTO parameters (location, gas price, CAPEX mult)
+│   ├── technology_costs.json  CAPEX/OPEX baselines incl. grid interconnect
+│   └── secrets.env            NREL API key (gitignored)
 │
 ├── data/
-│   ├── raw/                  Cached API responses (gitignored)
-│   └── processed/            Model outputs per ISO
+│   ├── raw/                   Cached API responses (gitignored)
+│   └── processed/             Per-ISO model outputs (demand, solar, BESS, reliability,
+│                              sLCOE surface, grid prices, grid sLCOE surface)
 │
-├── dashboard.py              Streamlit dashboard (Optimizer · Methodology · Team)
-├── requirements.txt          Python dependencies
-└── environment.yml           Conda environment (pinned)
+├── dashboard.py               Streamlit app (Optimizer · Methodology · Team)
+└── requirements.txt           Python dependencies
 ```
