@@ -1239,10 +1239,10 @@ def _page_methodology() -> None:
         <div style="background:{SURFACE};border:1px solid {BORDER};
                     padding:22px;font-family:monospace;font-size:12px;
                     color:{MUTED};line-height:2.3">
-          <span style="color:{C_SOLAR}">($950/kW<sub>DC</sub> × mult) × FCR + $10/kW-yr</span><br>
-          + <span style="color:{C_BESS}">($280/kWh × mult) × FCR + $5/kW-yr</span><br>
-          + <span style="color:{C_GAS}">($1,100/kW × mult) × FCR + $15/kW-yr</span><br>
-          + <span style="color:{C_GAS}">gas_price × 9.0 MMBtu/MWh + $5/MWh</span><br>
+          <span style="color:{C_SOLAR}">Solar CAPEX × FCR + Solar O&amp;M</span><br>
+          + <span style="color:{C_BESS}">BESS CAPEX × FCR + BESS O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas CAPEX × FCR + Gas O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas Fuel + Gas Var O&amp;M</span><br>
           <div style="height:1px;background:{BORDER};margin:12px 0"></div>
           ÷ &nbsp;Annual Demand MWh
         </div>
@@ -1263,11 +1263,11 @@ def _page_methodology() -> None:
         <div style="background:{SURFACE};border:1px solid {BORDER};
                     padding:22px;font-family:monospace;font-size:12px;
                     color:{MUTED};line-height:2.3">
-          <span style="color:{C_SOLAR}">($950/kW<sub>DC</sub> × mult) × FCR + $10/kW-yr</span><br>
-          + <span style="color:{C_BESS}">($280/kWh × mult) × FCR + $5/kW-yr</span><br>
-          + <span style="color:{C_GAS}">($1,100/kW × mult) × FCR + $15/kW-yr</span><br>
-          + <span style="color:{C_GAS}">gas_price × 9.0 MMBtu/MWh + $5/MWh</span><br>
-          + <span style="color:{C_GRID}">($100/kW × mult) × FCR + $2/kW-yr</span><br>
+          <span style="color:{C_SOLAR}">Solar CAPEX × FCR + Solar O&amp;M</span><br>
+          + <span style="color:{C_BESS}">BESS CAPEX × FCR + BESS O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas CAPEX × FCR + Gas O&amp;M</span><br>
+          + <span style="color:{C_GAS}">Gas Fuel + Gas Var O&amp;M</span><br>
+          + <span style="color:{C_GRID}">Grid Interconnect CAPEX × FCR</span><br>
           + <span style="color:{C_GRID}">Σ max(0, price[t]) × grid_import[t]</span><br>
           <div style="height:1px;background:{BORDER};margin:12px 0"></div>
           ÷ &nbsp;Annual Demand MWh
