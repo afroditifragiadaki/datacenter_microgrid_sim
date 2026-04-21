@@ -199,7 +199,7 @@ def _fetch_pjm(year: int) -> pd.Series | None:
     try:
         df = _fetch_monthly_parallel(
             gridstatus.PJM(), year,
-            {"market": "DAY_AHEAD_HOURLY", "locations": "hubs"},
+            {"market": "DAY_AHEAD_HOURLY", "location_type": "hub"},
         )
         return _to_hourly_avg(df, "Interval Start", "LMP", year) if df is not None else None
     except Exception:
