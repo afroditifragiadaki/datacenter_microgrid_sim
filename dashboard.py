@@ -1239,16 +1239,18 @@ def _page_methodology() -> None:
         <div style="background:{SURFACE};border:1px solid {BORDER};
                     padding:22px;font-family:monospace;font-size:12px;
                     color:{MUTED};line-height:2.3">
-          <span style="color:{C_SOLAR}">Solar CAPEX × FCR + Solar O&amp;M</span><br>
-          + <span style="color:{C_BESS}">BESS CAPEX × FCR + BESS O&amp;M</span><br>
-          + <span style="color:{C_GAS}">Gas CAPEX × FCR + Gas O&amp;M</span><br>
-          + <span style="color:{C_GAS}">Gas Fuel + Gas Var O&amp;M</span><br>
+          <span style="color:{C_SOLAR}">($950/kW<sub>DC</sub> × mult) × FCR + $10/kW-yr</span><br>
+          + <span style="color:{C_BESS}">($280/kWh × mult) × FCR + $5/kW-yr</span><br>
+          + <span style="color:{C_GAS}">($1,100/kW × mult) × FCR + $15/kW-yr</span><br>
+          + <span style="color:{C_GAS}">gas_price × 9.0 MMBtu/MWh + $5/MWh</span><br>
           <div style="height:1px;background:{BORDER};margin:12px 0"></div>
           ÷ &nbsp;Annual Demand MWh
         </div>
-        <div style="font-size:11px;color:{MUTED};margin-top:12px;line-height:1.8">
-          Gas is sized to G_min — the minimum capacity that guarantees
-          zero unserved energy regardless of solar or BESS conditions.
+        <div style="font-size:11px;color:{MUTED};margin-top:10px;line-height:1.7">
+          <span style="color:{C_SOLAR}">■</span> Solar PV &nbsp;
+          <span style="color:{C_BESS}">■</span> BESS &nbsp;
+          <span style="color:{C_GAS}">■</span> Gas RICE<br>
+          Gas sized to G_min — minimum capacity for zero unserved energy.
         </div>
         """, unsafe_allow_html=True)
 
@@ -1261,21 +1263,120 @@ def _page_methodology() -> None:
         <div style="background:{SURFACE};border:1px solid {BORDER};
                     padding:22px;font-family:monospace;font-size:12px;
                     color:{MUTED};line-height:2.3">
-          <span style="color:{C_SOLAR}">Solar CAPEX × FCR + Solar O&amp;M</span><br>
-          + <span style="color:{C_BESS}">BESS CAPEX × FCR + BESS O&amp;M</span><br>
-          + <span style="color:{C_GAS}">Gas CAPEX × FCR + Gas O&amp;M</span><br>
-          + <span style="color:{C_GAS}">Gas Fuel + Gas Var O&amp;M</span><br>
-          + <span style="color:{C_GRID}">Grid Interconnect CAPEX × FCR</span><br>
-          + <span style="color:{C_GRID}">Grid Interconnect O&amp;M</span><br>
-          + <span style="color:{C_GRID}">Σ price[t] × grid_import[t]</span><br>
+          <span style="color:{C_SOLAR}">($950/kW<sub>DC</sub> × mult) × FCR + $10/kW-yr</span><br>
+          + <span style="color:{C_BESS}">($280/kWh × mult) × FCR + $5/kW-yr</span><br>
+          + <span style="color:{C_GAS}">($1,100/kW × mult) × FCR + $15/kW-yr</span><br>
+          + <span style="color:{C_GAS}">gas_price × 9.0 MMBtu/MWh + $5/MWh</span><br>
+          + <span style="color:{C_GRID}">($100/kW × mult) × FCR + $2/kW-yr</span><br>
+          + <span style="color:{C_GRID}">Σ max(0, price[t]) × grid_import[t]</span><br>
           <div style="height:1px;background:{BORDER};margin:12px 0"></div>
           ÷ &nbsp;Annual Demand MWh
         </div>
-        <div style="font-size:11px;color:{MUTED};margin-top:12px;line-height:1.8">
-          Grid interconnect sized to peak actual grid import MW.
-          Negative prices are floored at $0 (no revenue from export modelled).
+        <div style="font-size:11px;color:{MUTED};margin-top:10px;line-height:1.7">
+          <span style="color:{C_GRID}">■</span> Grid interconnect sized to peak import MW.<br>
+          Gas is a free variable (0–200 MW); grid is the infinite backstop.
         </div>
         """, unsafe_allow_html=True)
+
+    # Technology costs table
+    st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.16em;
+                text-transform:uppercase;color:{MUTED};margin-bottom:16px">
+      Technology Cost Assumptions &nbsp;·&nbsp; NREL ATB 2025 Moderate · Lazard LCOS V18 · Real 2024 USD
+    </div>
+    """, unsafe_allow_html=True)
+
+    tc1, tc2, tc3, tc4 = st.columns(4)
+    for col, color, title, rows in [
+        (tc1, C_SOLAR, "Solar PV", [
+            ("CAPEX", "$950 /kW<sub>DC</sub>"),
+            ("Fixed O&M", "$10 /kW-yr"),
+            ("Lifetime", "30 yr"),
+            ("Degradation", "0.5% /yr"),
+            ("DC:AC ratio", "1.3 fixed-tilt"),
+        ]),
+        (tc2, C_BESS, "BESS (4-hr AC)", [
+            ("CAPEX", "$280 /kWh"),
+            ("Fixed O&M", "$5 /kW-yr"),
+            ("Lifetime", "15 yr"),
+            ("Augmentation", "2.5% /yr"),
+            ("Round-trip η", "85%"),
+        ]),
+        (tc3, C_GAS, "Gas RICE", [
+            ("CAPEX", "$1,100 /kW"),
+            ("Fixed O&M", "$15 /kW-yr"),
+            ("Var O&M", "$5 /MWh"),
+            ("Heat rate", "9.0 MMBtu/MWh"),
+            ("Lifetime", "20 yr"),
+        ]),
+        (tc4, C_GRID, "Grid Interconnect", [
+            ("CAPEX", "$100 /kW"),
+            ("Fixed O&M", "$2 /kW-yr"),
+            ("Lifetime", "25 yr"),
+            ("Sizing", "Peak import MW"),
+            ("", ""),
+        ]),
+    ]:
+        rows_html = "".join(
+            f'<tr><td style="color:{MUTED};padding:4px 0;font-size:11px">{k}</td>'
+            f'<td style="color:{TEXT};padding:4px 0 4px 12px;font-size:11px;'
+            f'text-align:right">{v}</td></tr>'
+            for k, v in rows if k
+        )
+        col.markdown(f"""
+        <div style="background:{SURFACE};border:1px solid {BORDER};
+                    border-top:2px solid {color};padding:16px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:0.12em;
+                      text-transform:uppercase;color:{color};margin-bottom:12px">{title}</div>
+          <table style="width:100%;border-collapse:collapse">{rows_html}</table>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ISO multipliers + gas prices
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.16em;
+                text-transform:uppercase;color:{MUTED};margin-bottom:16px">
+      Regional CAPEX Multipliers &amp; Gas Prices
+    </div>
+    """, unsafe_allow_html=True)
+
+    iso_mult_data = [
+        ("ERCOT", "1.00×", "$2.50/MMBtu", "$22.50/MWh marginal"),
+        ("PJM",   "1.05×", "$3.20/MMBtu", "$28.80/MWh marginal"),
+        ("MISO",  "1.03×", "$3.00/MMBtu", "$27.00/MWh marginal"),
+        ("CAISO", "1.15×", "$5.00/MMBtu", "$45.00/MWh marginal"),
+        ("SPP",   "1.00×", "$2.80/MMBtu", "$25.20/MWh marginal"),
+        ("NYISO", "1.18×", "$5.50/MMBtu", "$49.50/MWh marginal"),
+        ("ISONE", "1.20×", "$6.00/MMBtu", "$54.00/MWh marginal"),
+    ]
+    hdr_style = (f"font-size:10px;font-weight:600;color:{MUTED};"
+                 "letter-spacing:0.1em;text-transform:uppercase;padding:6px 10px")
+    cell_style = f"font-size:12px;color:{TEXT};padding:6px 10px"
+    muted_cell = f"font-size:11px;color:{MUTED};padding:6px 10px"
+    rows_html = "".join(
+        f'<tr style="border-top:1px solid {BORDER}">'
+        f'<td style="{cell_style};font-weight:600">{iso}</td>'
+        f'<td style="{cell_style}">{mult}</td>'
+        f'<td style="{cell_style}">{gas}</td>'
+        f'<td style="{muted_cell}">{note}</td>'
+        f'</tr>'
+        for iso, mult, gas, note in iso_mult_data
+    )
+    st.markdown(f"""
+    <div style="background:{SURFACE};border:1px solid {BORDER};overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <tr style="background:{BORDER}20">
+          <th style="{hdr_style};text-align:left">ISO</th>
+          <th style="{hdr_style};text-align:left">CAPEX Mult</th>
+          <th style="{hdr_style};text-align:left">Gas Price</th>
+          <th style="{hdr_style};text-align:left">Gas Marginal (fuel + $5/MWh var O&M)</th>
+        </tr>
+        {rows_html}
+      </table>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Key parameters grid
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
