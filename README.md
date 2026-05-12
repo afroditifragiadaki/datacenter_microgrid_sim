@@ -14,17 +14,6 @@ energy share target, then shows which option is cheaper and by how much.
 
 ---
 
-## Team
-
-| Name | Email |
-|------|-------|
-| Afroditi Fragkiadaki | af3619@columbia.edu |
-| Daniel Holland | doh2105@columbia.edu |
-| Raphael Vogeley | rpv2113@columbia.edu |
-| Tselmeg Mendsaikhan | tm3516@columbia.edu |
-
----
-
 ## What It Does
 
 Given a datacenter IT load (MW) and a minimum on-site renewable share (%), the tool:
