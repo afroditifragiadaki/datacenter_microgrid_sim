@@ -1,0 +1,793 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Data Center Energy Supply Modeling Using Historical\\
+Price and Demand Data with Microgrid Integration%
+\thanks{Course project, ELEN 4510: Modern \& Clean Energy Systems,
+Columbia University, Spring 2026.}}
+
+\author{
+\IEEEauthorblockN{Afroditi Fragkiadaki, Daniel Holland, Raphael Vogeley, Tselmeg Mendsaikhan}
+\IEEEauthorblockA{\textit{Department of Electrical Engineering, Columbia University, New York, NY, USA}\\
+af3619@columbia.edu,\ doh2105@columbia.edu,\ rpv2113@columbia.edu,\ tm3516@columbia.edu}
+}
+
+\maketitle
+
+% -----------------------------------------------------------------------
+\begin{abstract}
+We present an open-source hourly simulation and optimization framework for
+data center energy supply planning.
+The user specifies two key parameters: the facility IT load (MW) and a
+minimum on-site renewable energy fraction (\%).
+Given those inputs, the tool evaluates and compares two supply architectures
+across any combination of U.S.\ ISO/RTO markets: an islanded behind-the-meter
+microgrid composed of solar PV, battery storage, and natural gas reciprocating
+engines, and a grid-connected architecture that supplements on-site resources
+with wholesale electricity imports.
+For each market, the framework constructs weather-driven load, solar, battery,
+gas dispatch, and day-ahead price time series, then searches over candidate
+asset sizes to find the minimum system levelized cost of energy (sLCOE) design
+that meets the renewable constraint.
+We present results for a representative 50\,MW data center facility with a
+30\% renewable floor across all seven ISO/RTO markets (ERCOT, PJM, MISO,
+CAISO, SPP, NYISO, and ISO New England), showing that the grid-connected
+architecture is cheaper in every market studied.
+We then perform a detailed analysis for ERCOT (Dallas-Fort Worth), examining
+the full sLCOE surface, the cost premium imposed by the renewable constraint,
+the sensitivity of results to key techno-economic parameters, and the
+conditions under which islanded operation could become cost-competitive.
+\end{abstract}
+
+\begin{IEEEkeywords}
+data centers, microgrids, solar PV, battery energy storage, natural gas
+generation, system LCOE, grid optimization, renewable energy constraint
+\end{IEEEkeywords}
+
+% -----------------------------------------------------------------------
+\section{Introduction}
+\label{sec:intro}
+
+Data centers have become material electricity-sector loads.
+The International Energy Agency estimates that data centers consumed
+approximately 415\,TWh globally in 2024---roughly 1.5\% of global electricity
+consumption---and projects this figure could approximately double by 2030
+under its base case \cite{b1}.
+This growth is driven by cloud services, accelerated computing, and
+artificial-intelligence workloads.
+Data centers are also geographically concentrated: even when individual global
+shares appear modest, local transmission-queue congestion and wholesale-price
+impacts can be significant.
+
+This context motivates a practical planning question for large computing
+loads: should a data center rely only on the bulk grid, build a
+behind-the-meter (BTM) microgrid, or combine both?
+Microgrids are attractive because they can improve resilience, integrate local
+renewable generation, and support islanded operation during grid
+disturbances \cite{b2}.
+At the same time, a microgrid that must serve a data center without grid
+support in every hour must be sized for reliability, which forces overbuilding
+of dispatchable generation and storage relative to normal operating needs.
+
+The project modeled this trade-off by comparing two strategies.
+\emph{Model A} is an islanded BTM microgrid with solar PV, battery energy
+storage systems (BESS), and natural gas reciprocating internal combustion
+engines (RICE).
+\emph{Model B} is grid-connected and allows hourly imports from regional
+electricity markets.
+The comparison spans ERCOT, PJM, MISO, CAISO, SPP, NYISO, and ISO New England.
+
+Our contribution is an open-source decision tool that connects public weather,
+solar, market-price, and technology-cost data to a technology-cost sLCOE
+optimizer.\footnote{Live tool:
+\url{https://afroditifragiadaki-datacenter-microgrid-sim-dashboard-zfcrhl.streamlit.app/}}
+The tool is not intended to replace production-grade interconnection studies
+or stochastic resource adequacy analysis.
+Instead, it provides a transparent first-order comparison of energy
+architectures under a consistent set of assumptions.
+
+% -----------------------------------------------------------------------
+\section{Project Scope and System Architectures}
+\label{sec:scope}
+
+The analysis assumes an existing data center with configurable IT load.
+The baseline run uses 50\,MW of IT load; facility load is larger because
+cooling and auxiliary systems are captured through Power Usage Effectiveness
+(PUE).
+All technologies are modeled behind the meter except utility imports in the
+grid-connected case.
+
+\subsection{Islanded Microgrid (Model A)}
+
+The islanded configuration has no grid connection.
+Solar generation serves load first; surplus solar charges the BESS; any
+remaining deficit is served by natural gas.
+Because the data center must be served in every modeled hour, gas capacity is
+the reliability backstop sized to eliminate unserved energy over the full
+8,784-hour simulation.
+
+\subsection{Grid-Connected (Model B)}
+
+The grid-connected configuration uses the same solar-first dispatch, but any
+residual demand after solar and BESS is covered by the cheaper of on-site gas
+and grid imports each hour, using the day-ahead locational marginal price
+(LMP).
+The grid is treated as an infinite-capacity source; unserved energy is always
+zero in Model B.
+
+% -----------------------------------------------------------------------
+\section{Data Sources and Preprocessing}
+\label{sec:data}
+
+\textbf{Weather.}
+Hourly dry-bulb temperature is retrieved from the Open-Meteo Historical
+Weather API \cite{b5} for a representative datacenter location in each ISO
+(Table~\ref{tab:iso}).
+Data covers all 8,784 hours of the 2024 leap year.
+
+\textbf{Solar resource.}
+Solar irradiance and AC output are obtained from the NREL PVWatts V8
+API \cite{b3}, which uses NSRDB TMY data internally.
+The TMY 8,760-hour profile is expanded to 8,784 hours by duplicating
+February 28 as February 29.
+Site-specific tilt angles (set to latitude) and south-facing azimuth
+(180$^\circ$) are used for all ISOs.
+Module type is ``Premium'' ($\gamma = -0.35$\%/$^\circ$C), DC/AC ratio 1.2,
+system losses 15\%.
+
+\textbf{Wholesale electricity prices.}
+Hourly real-time LMPs for 2024 are retrieved from each ISO's published data
+portal.
+Negative prices are retained for dispatch decisions but clipped to zero in
+cost accounting.
+
+\textbf{Technology costs.}
+Capital and operating costs are sourced from Lazard LCOE+ v18.0 \cite{b6},
+NREL Annual Technology Baseline 2025 \cite{b7}, and the EIA Short-Term
+Energy Outlook \cite{b8}.
+Gas fuel prices use 2024 EIA industrial state-level prices with estimated
+basis differentials (Table~\ref{tab:iso}).
+
+\begin{table}[htbp]
+\caption{ISO Locations and Regional Parameters}
+\label{tab:iso}
+\begin{center}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{ISO} & \textbf{Location} & \textbf{\begin{tabular}[c]{@{}c@{}}Gas\\(\$/MMBtu)\end{tabular}} & \textbf{\begin{tabular}[c]{@{}c@{}}CAPEX\\mult.\end{tabular}} \\
+\hline
+ERCOT  & Dallas-Fort Worth, TX & 2.50 & 1.00 \\
+\hline
+PJM    & Pittsburgh, PA        & 3.20 & 1.05 \\
+\hline
+MISO   & Indianapolis, IN      & 3.00 & 1.03 \\
+\hline
+CAISO  & Fresno, CA            & 5.00 & 1.15 \\
+\hline
+SPP    & Oklahoma City, OK     & 2.80 & 1.00 \\
+\hline
+NYISO  & Albany, NY            & 5.50 & 1.18 \\
+\hline
+ISO-NE & Hartford, CT          & 6.00 & 1.20 \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[htbp]
+\caption{Model Input Parameters}
+\label{tab:inputs}
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Source} \\
+\hline
+IT load baseline & 50 MW & --- \\
+Annual demand (ERCOT) & 522,524 MWh & Simulated \\
+\hline
+\multicolumn{3}{|l|}{\textit{Solar PV (utility-scale, fixed tilt)}} \\
+\hline
+CAPEX & \$950/kW$_{\rm DC}$ & NREL ATB 2025 \\
+Fixed O\&M & \$10/kW/yr & NREL ATB 2025 \\
+Lifetime & 30 yr & NREL ATB 2025 \\
+\hline
+\multicolumn{3}{|l|}{\textit{Battery Energy Storage (4-hr)}} \\
+\hline
+CAPEX & \$280/kWh & Lazard LCOS V18 \\
+Charge / discharge eff. & 96\% each & Literature \\
+Min.\ SoC & 20\% & Manufacturer \\
+Augmentation & 2.5\%/yr & Lazard LCOS V18 \\
+Lifetime & 15 yr & Lazard LCOS V18 \\
+\hline
+\multicolumn{3}{|l|}{\textit{Natural Gas RICE}} \\
+\hline
+CAPEX & \$1,100/kW & NREL ATB 2025 \\
+Fixed O\&M & \$15/kW/yr & NREL ATB 2025 \\
+Variable O\&M & \$5/MWh & NREL ATB 2025 \\
+Heat rate & 9.0 MMBtu/MWh & Industry \\
+CO$_2$ factor & 0.0531 t/MMBtu & EPA AP-42 \\
+Lifetime & 20 yr & NREL ATB 2025 \\
+\hline
+\multicolumn{3}{|l|}{\textit{Financial}} \\
+\hline
+Discount rate $r$ & 8\% & Project finance \\
+Project life $n$ & 25 yr & Project finance \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+% -----------------------------------------------------------------------
+\section{Mathematical Modeling}
+\label{sec:model}
+
+\subsection{Demand Model}
+
+Total hourly facility load $L_t$ (MW) is the product of constant IT load
+$L_{\rm IT} = 50$\,MW and the Power Usage Effectiveness at ambient
+temperature $T_t$ ($^\circ$C):
+%
+\begin{equation}
+  L_t = L_{\rm IT} \times \mathrm{PUE}(T_t).
+  \label{eq:load}
+\end{equation}
+
+A naive step-function PUE creates discontinuous load jumps at threshold
+crossings that are physically unrealistic.
+A piecewise-linear interpolation over five control points is used instead:
+%
+\begin{equation}
+  \mathrm{PUE}(T) =
+  \begin{cases}
+    1.12 & T \leq 10\,^\circ\mathrm{C} \\[2pt]
+    1.12 + \dfrac{T-10}{1250} & 10 < T \leq 25\,^\circ\mathrm{C} \\[6pt]
+    1.20 + \dfrac{T-25}{833} & 25 < T \leq 35\,^\circ\mathrm{C} \\[6pt]
+    1.32 + \dfrac{T-35}{769} & T > 35\,^\circ\mathrm{C}
+  \end{cases}
+  \label{eq:pue}
+\end{equation}
+
+\noindent clamped at $\mathrm{PUE}_{\min}=1.12$ (free economizer cooling,
+$T\leq 10\,^\circ$C) and $\mathrm{PUE}_{\max}=1.45$ (full mechanical
+chilling, $T\geq 60\,^\circ$C).
+For ERCOT (Dallas-Fort Worth) the simulated average PUE is 1.190, average
+facility load 59.5\,MW, and annual consumption 522,524\,MWh.
+
+\subsection{Solar Generation Model}
+
+Hourly AC solar output (MW) is
+%
+\begin{equation}
+  P_{\rm sol,t} = S \cdot \mathrm{CF}_t,
+  \label{eq:solar}
+\end{equation}
+
+\noindent where $S$ (MW$_{\rm DC}$) is the installed DC nameplate (optimizer
+decision variable) and $\mathrm{CF}_t \in [0,1]$ is the hourly capacity
+factor from PVWatts.
+For ERCOT the annual average CF is 17.05\% with an AC yield of
+1,492\,kWh/kW.
+
+\subsection{Battery Energy Storage Model}
+
+Battery state-of-charge $E_t$ (MWh) evolves as
+%
+\begin{equation}
+  E_t = E_{t-1}
+      + P_{\rm ch,t}\,\eta_{\rm ch}\,\eta_{{\rm temp},t}
+      - \frac{P_{\rm dis,t}}{\eta_{{\rm temp},t}\,\eta_{\rm dis}},
+  \label{eq:bess}
+\end{equation}
+
+\noindent subject to
+%
+\begin{align}
+  \mathrm{SoC}_{\min}\,B &\leq E_t \leq B, \label{eq:soc} \\
+  0 \leq P_{\rm ch,t}\,,\; P_{\rm dis,t} &\leq B/\tau, \label{eq:power}
+\end{align}
+
+\noindent where $B$ (MWh) is battery energy capacity (optimizer decision
+variable), $\tau=4$\,h is the energy-to-power ratio,
+$\eta_{\rm ch} = \eta_{\rm dis} = 0.96$, and
+$\mathrm{SoC}_{\min} = 0.20$ (80\% depth of discharge).
+The nominal round-trip efficiency is
+%
+\begin{equation}
+  \eta_{\rm rt} = \eta_{\rm ch}\,\eta_{\rm dis}
+               = 0.96 \times 0.96 = 92.2\%.
+  \label{eq:eta_rt}
+\end{equation}
+
+\subsubsection{Temperature-Dependent Efficiency Correction}
+
+Utility-scale Li-ion BESS uses an HVAC thermal-management subsystem
+(PHVAC) that keeps cells in their optimal window ($15$--$35\,^\circ$C).
+Outside this window PHVAC draws a parasitic load that reduces effective
+efficiency.
+A piecewise-linear modifier $\eta_{{\rm temp},t}\in[0.92,\,1.00]$ is
+interpolated from ambient temperature:
+%
+\begin{equation}
+  \eta_{\rm temp}(T) =
+  \begin{cases}
+    0.94 & T \leq -10\,^\circ\mathrm{C} \\
+    0.97 & T = 0\,^\circ\mathrm{C} \\
+    1.00 & 15 \leq T \leq 35\,^\circ\mathrm{C} \\
+    0.96 & T = 45\,^\circ\mathrm{C} \\
+    0.92 & T \geq 60\,^\circ\mathrm{C}
+  \end{cases}
+  \label{eq:eta_temp}
+\end{equation}
+
+At an ERCOT summer peak of $T=40\,^\circ$C ($\eta_{\rm temp}\approx 0.98$),
+the effective round-trip efficiency is
+$(0.96\times0.98)^2 \approx 88.4\%$.
+
+\subsection{Natural Gas Dispatch Model}
+
+After solar and BESS the residual demand is
+%
+\begin{equation}
+  D_{{\rm res},t}
+    = \max\!\bigl(0,\;L_t - P_{{\rm sol},t} - P_{{\rm dis},t}\bigr).
+  \label{eq:residual}
+\end{equation}
+
+Gas is dispatched as the gap-filler of last resort:
+%
+\begin{equation}
+  P_{{\rm gas},t} = \min\!\bigl(G,\;D_{{\rm res},t}\bigr),
+  \label{eq:gas}
+\end{equation}
+
+\noindent where $G$ (MW) is installed gas capacity (optimizer decision
+variable).
+Fuel consumption and CO$_2$ emissions are
+%
+\begin{align}
+  F_t &= P_{{\rm gas},t} \times \mathrm{HR}, \quad [\mathrm{MMBtu}] \label{eq:fuel} \\
+  E_{{\rm CO}_2,t} &= F_t \times \varepsilon, \quad [\mathrm{tCO}_2] \label{eq:co2}
+\end{align}
+
+\noindent with heat rate $\mathrm{HR} = 9.0$\,MMBtu/MWh and
+$\varepsilon = 0.0531$\,tCO$_2$/MMBtu \cite{b4}, giving a full-load
+intensity of $0.478$\,tCO$_2$/MWh.
+
+\subsection{Grid-Connected Dispatch (Model B)}
+
+For Model B, residual demand after solar and BESS is split between gas and
+grid import based on hourly cost.
+The gas short-run marginal cost is
+%
+\begin{equation}
+  c_{\rm src} = \mathrm{HR}\times c_{\rm fuel} + c_{\rm var}
+  \quad [\$/\mathrm{MWh}],
+  \label{eq:gas_src}
+\end{equation}
+
+\noindent where $c_{\rm fuel}$ (\$/MMBtu) is the ISO-specific gas price and
+$c_{\rm var} = \$5$/MWh is variable O\&M.
+The dispatch each hour is
+%
+\begin{equation}
+  \bigl(P_{{\rm gas},t},\,P_{{\rm grid},t}\bigr) =
+  \begin{cases}
+    \bigl(0,\;D_{{\rm res},t}\bigr)
+      & \mathrm{LMP}_t \leq c_{\rm src} \\[4pt]
+    \bigl(\min(G,D_{{\rm res},t}),\;\max(0,D_{{\rm res},t}-G)\bigr)
+      & \mathrm{otherwise.}
+  \end{cases}
+  \label{eq:grid_dispatch}
+\end{equation}
+
+% -----------------------------------------------------------------------
+\section{Optimization Problem}
+\label{sec:opt}
+
+\subsection{Objective Function}
+
+The three optimizer decision variables are $S$ (MW$_{\rm DC}$ solar),
+$B$ (MWh battery), and $G$ (MW gas).
+The objective is to minimize system levelized cost of energy:
+%
+\begin{equation}
+  \min_{S,\,B,\,G \geq 0}
+  \;\mathrm{sLCOE}
+  = \frac{C_{\rm sol}(S)+C_{\rm BESS}(B)+C_{\rm gas}(G,E_{\rm gas})}
+         {E_{\rm demand}},
+  \label{eq:obj}
+\end{equation}
+
+\noindent where $E_{\rm demand}$ (MWh/yr) is annual datacenter consumption.
+
+\subsection{Annual Cost Functions}
+
+All costs are annualized using the Capital Recovery Factor
+%
+\begin{equation}
+  \mathrm{CRF}(r,n)
+    = \frac{r\,(1+r)^n}{(1+r)^n - 1},
+  \label{eq:crf}
+\end{equation}
+
+\noindent with discount rate $r=8\%$ and asset-specific life $n$:
+%
+\begin{align}
+  C_{\rm sol}(S)
+    &= \bigl[c_{s,c}\,\mathrm{CRF}(r,n_s)
+            + c_{s,o}\bigr]\cdot S \cdot 10^3,
+  \label{eq:csol} \\[4pt]
+  C_{\rm BESS}(B)
+    &= \bigl[c_{b,c}\,\mathrm{CRF}(r,n_b)
+            + c_{b,{\rm aug}}
+            + c_{b,o}/\tau\bigr]\cdot B \cdot 10^3,
+  \label{eq:cbess} \\[4pt]
+  C_{\rm gas}(G,E_{\rm gas})
+    &= \bigl[c_{g,c}\,\mathrm{CRF}(r,n_g)
+            + c_{g,f}\bigr]\cdot G \cdot 10^3 \nonumber \\
+    &\quad + (c_{g,v} + \mathrm{HR}\cdot c_{\rm fuel})\cdot E_{\rm gas},
+  \label{eq:cgas}
+\end{align}
+
+\noindent where subscripts $c$, $o$, $f$, $v$ denote CAPEX, fixed O\&M,
+fixed O\&M (gas), and variable O\&M, respectively, and $c_{b,{\rm aug}}$
+is the annual battery cell-augmentation cost (2.5\%/yr of BESS CAPEX).
+
+For Model B the total cost also includes annualized grid interconnection
+infrastructure and the annual grid energy purchase:
+%
+\begin{equation}
+  \begin{split}
+    C_{\rm grid}
+      &= \bigl[c_{x,c}\,\mathrm{CRF}(r,n_x)+c_{x,o}\bigr]
+         \hat{P}_{\rm grid}\cdot 10^3 \\
+      &\quad + \sum_{t=1}^{T}\max(0,\mathrm{LMP}_t)\,P_{{\rm grid},t},
+  \end{split}
+  \label{eq:cgrid}
+\end{equation}
+
+\noindent where $\hat{P}_{\rm grid}=\max_t P_{{\rm grid},t}$ (MW) sizes the
+interconnection, $c_{x,c}=\$100$/kW, and $c_{x,o}=\$2$/kW/yr.
+
+\subsection{Constraints}
+
+\subsubsection{Reliability Constraint (Model A)}
+
+Because the islanded microgrid must serve load in every hour, the installed
+gas capacity must satisfy
+%
+\begin{equation}
+  G \geq G_{\min}(S,B),
+  \quad
+  G_{\min}(S,B) = \max_{t}\bigl[P_{{\rm gas},t}(S,B,G\!\to\!\infty)\bigr].
+  \label{eq:reliability}
+\end{equation}
+
+$G_{\min}$ is the peak gas output when gas is unconstrained, equal to the
+worst-case hourly residual load the BESS cannot cover.
+This surface is precomputed by a two-dimensional grid search before the
+economic optimization.
+
+\subsubsection{Renewable Floor Constraint}
+
+A user-specified minimum on-site renewable fraction $\rho_{\min}$ is imposed:
+%
+\begin{equation}
+  \mathcal{R}(S,B,G)
+    = \frac{E_{\rm sol,used}+E_{\rm BESS,dis}}{E_{\rm demand}}
+    \geq \rho_{\min}.
+  \label{eq:ren_floor}
+\end{equation}
+
+\noindent Storage dispatch is counted as renewable because the BESS is charged
+primarily by solar surplus.
+
+\subsection{Solution Method}
+
+The optimization is solved by exhaustive grid search.
+Solar capacity is swept over $S \in \{0,25,\ldots,300\}$\,MW and battery
+size over $B \in \{0,40,\ldots,400\}$\,MWh (integer multiples of the 4\,MWh
+commercial container), giving 143 candidate $(S,B)$ pairs.
+For each pair, $G_{\min}$ is looked up from the precomputed reliability
+surface, dispatch is run for all 8,784 hours, sLCOE is computed, and designs
+violating \eqref{eq:ren_floor} are excluded.
+The grid search avoids local-minimum issues and is fully reproducible.
+Total run time is approximately 30\,s on a laptop CPU.
+
+% -----------------------------------------------------------------------
+\section{Results}
+\label{sec:results}
+
+\subsection{Cross-Market Comparison}
+
+Table~\ref{tab:iso_compare} presents the cost-optimal islanded and
+grid-connected designs for all seven ISO/RTO markets at the 50\,MW IT-load
+baseline and 30\% renewable floor, ranked by islanded sLCOE.
+The Solar and BESS columns show the optimal on-site asset sizes for the
+islanded configuration; gas capacity is determined by the reliability
+constraint \eqref{eq:reliability} and ranges from 66 to 69\,MW across all
+markets.
+
+\begin{table}[htbp]
+\caption{All Markets: 50\,MW IT Load, 30\% Renewable Floor (ranked by islanded sLCOE)}
+\label{tab:iso_compare}
+\begin{center}
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{ISO} &
+\textbf{\begin{tabular}[c]{@{}c@{}}Islanded\\(\$/MWh)\end{tabular}} &
+\textbf{\begin{tabular}[c]{@{}c@{}}Grid\\(\$/MWh)\end{tabular}} &
+\textbf{\begin{tabular}[c]{@{}c@{}}$\Delta$\\(\$/MWh)\end{tabular}} &
+\textbf{\begin{tabular}[c]{@{}c@{}}Solar\\(MW)\end{tabular}} &
+\textbf{\begin{tabular}[c]{@{}c@{}}BESS\\(MWh)\end{tabular}} \\
+\hline
+ERCOT  & 62.14  & 48.97 & 13.17 & 125 & 40 \\
+\hline
+SPP    & 63.27  & 52.51 & 10.76 & 125 & 40 \\
+\hline
+MISO   & 71.12  & 63.32 &  7.80 & 150 & 40 \\
+\hline
+CAISO  & 78.15  & 53.28 & 24.87 & 100 & 40 \\
+\hline
+PJM    & 78.29  & 60.88 & 17.40 & 175 & 40 \\
+\hline
+NYISO  & 97.18  & 68.22 & 28.96 & 150 & 80 \\
+\hline
+ISO-NE & 100.74 & 72.39 & 28.34 & 150 & 80 \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+The grid-connected architecture is cheaper in all seven markets, with the
+advantage ($\Delta$) ranging from \$7.80/MWh in MISO to \$28.96/MWh in NYISO.
+Three patterns emerge.
+
+First, Sun Belt markets (ERCOT, SPP) achieve the lowest absolute islanded
+costs (\$62--\$63/MWh) thanks to their low gas prices (\$2.50--\$2.80/MMBtu),
+favorable solar resources, and baseline CAPEX multipliers (1.00$\times$).
+However, their wholesale markets are also cheap, so the grid-connected
+advantage is moderate (\$10--\$13/MWh).
+
+Second, Northeast markets (NYISO, ISO-NE) have the highest islanded costs
+(\$97--\$101/MWh) driven by expensive gas (\$5.50--\$6.00/MMBtu) and high
+construction cost multipliers (1.18--1.20$\times$).
+These same factors compress the grid-connected savings relative to the
+islanded premium, yielding the largest absolute gaps (\$28--\$29/MWh).
+They also require 80\,MWh of BESS---double that of Sun Belt ISOs---because
+lower solar capacity factors require more intraday shifting to meet the
+renewable floor.
+
+Third, CAISO stands out as the largest percentage advantage for the
+grid-connected case (32\%): its high gas price inflates the islanded
+microgrid while the California wholesale market, despite its volatility,
+offers competitively priced import hours.
+
+\subsection{ERCOT Deep Dive}
+
+ERCOT (Dallas-Fort Worth, TX) is selected for a detailed analysis because it
+represents the most favorable conditions for islanded operation: lowest gas
+price, best solar resource, and lowest CAPEX multiplier.
+If grid-connected is still cheaper in ERCOT, it will be cheaper everywhere.
+
+\subsubsection{Effect of the Renewable Constraint}
+
+Table~\ref{tab:ercot} contrasts the unconstrained optimum with the 30\%
+renewable floor result for the islanded case.
+
+\begin{table}[htbp]
+\caption{ERCOT Deep Dive --- Islanded Optimal Designs}
+\label{tab:ercot}
+\begin{center}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Metric} & \textbf{No RE floor} & \textbf{30\% RE floor} \\
+\hline
+Solar $S$ (MW$_{\rm DC}$)  & 0     & 125  \\
+\hline
+Battery $B$ (MWh)           & 0     & 40   \\
+\hline
+Gas $G$ (MW)                & 67.6  & 67   \\
+\hline
+sLCOE (\$/MWh)              & 45.42 & 62.14 \\
+\hline
+Renewable share (\%)        & 0     & 31   \\
+\hline
+Annual CO$_2$ (kt)          & 249.7 & 178.5 \\
+\hline
+\end{tabular}
+\end{center}
+\end{table}
+
+When no renewable floor is imposed, the unconstrained optimum is pure
+gas ($S=0$, $B=0$), driven by the low Texas gas price and the high capital
+cost of solar and BESS relative to fuel savings at this price level.
+At the 30\% renewable floor the optimal design shifts to $S=125$\,MW DC
+with $B=40$\,MWh BESS; the constraint is binding (31\% just meets 30\%),
+and sLCOE rises to \$62.14/MWh---a 37\% premium over the unconstrained
+gas-only baseline.
+
+\subsubsection{Islanded vs.\ Grid-Connected at 30\% Floor}
+
+At the same 30\% renewable floor the optimal grid-connected design achieves
+sLCOE\,=\,\$48.97/MWh, a \$13.17/MWh saving over the islanded alternative.
+The grid-connected design benefits from sourcing cheap wholesale imports
+during hours when the LMP falls below the on-site gas short-run marginal
+cost \eqref{eq:gas_src}, while never being forced to oversize gas capacity
+for reliability.
+The islanded design must hold 67\,MW of gas firm---sized to the
+single worst-case residual demand hour over 8,784 hours---even though that
+capacity runs at low utilization most of the year.
+
+% -----------------------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Why the Grid Dominates}
+
+Two structural factors explain the result.
+First, the grid acts as an unlimited-capacity backstop: the grid-connected
+data center never needs to invest in firm capacity for its own worst-case
+load.
+The islanded case must size gas to the peak residual demand hour (67.4\,MW
+for ERCOT at $S=125$\,MW DC), even when gas runs below 50\% capacity factor
+most of the year.
+Second, BESS at \$280/kWh provides limited fuel-cost savings relative to its
+capital; the optimal islanded designs at the 30\% floor carry only 40\,MWh
+of storage in most ISOs (80\,MWh in NYISO and ISO-NE where lower solar
+capacity factors require more shifting).
+
+\subsection{Role of the Renewable Constraint}
+
+The renewable floor is binding in all markets---the unconstrained optimum in
+every ISO features a renewable share below 30\%.
+Any renewable target imposed on an islanded microgrid therefore adds cost
+relative to the unconstrained minimum, ranging from roughly \$14--\$28/MWh
+in ERCOT and MISO to \$30--\$40/MWh in CAISO, NYISO, and ISO-NE.
+
+\subsection{FERC Order 2222 and Future Economics}
+
+FERC Order No.\ 2222 requires utilities to allow aggregations of distributed
+energy resources to participate in wholesale markets.
+Full implementation would allow islanded or semi-islanded microgrids to
+recover ancillary-service revenues not credited in this model.
+BESS CAPEX projected below \$200/kWh by 2030 (NREL Storage Futures) would
+materially improve the islanded case economics.
+
+% -----------------------------------------------------------------------
+\section{Limitations and Future Work}
+\label{sec:limitations}
+
+The current model has several important limitations:
+
+\begin{itemize}
+\item \textbf{Deterministic dispatch:} A single 2024 weather/price year is
+used.
+Stochastic analysis across many historical years would better characterize
+tail-risk events such as Winter Storm Uri.
+
+\item \textbf{No unit-commitment:} Gas ramp rates and start-up costs are not
+modeled; dispatch below the 30\% minimum stable load is treated as
+continuous.
+
+\item \textbf{No demand response:} IT load is non-curtailable.
+Hyperscalers may shift batch workloads by minutes to hours in practice.
+
+\item \textbf{No capacity payments:} PJM and ISO-NE operate capacity markets
+that could provide revenue credit to firm on-site resources.
+
+\item \textbf{Grid interconnection simplification:} The \$100/kW
+interconnection proxy may underestimate upgrade costs in congested zones.
+\end{itemize}
+
+Future work includes: (a) multi-year stochastic dispatch; (b) policy
+sensitivity over ITC, carbon price, and BESS cost trajectories; (c)
+gradient-based continuous optimization for finer asset-size resolution; and
+(d) a live dashboard for interactive scenario comparison \cite{b9}.
+
+% -----------------------------------------------------------------------
+\section{Conclusions}
+\label{sec:conclusions}
+
+This paper presents an open-source hourly simulation framework comparing
+islanded BTM and grid-connected energy supply strategies for a 50\,MW data
+center across seven U.S.\ ISO/RTO markets.
+Key findings are as follows.
+
+\begin{itemize}
+\item The grid-connected architecture is cheaper than the islanded microgrid
+in all seven markets at the 30\% renewable floor, with advantages ranging
+from \$7.80/MWh (MISO) to \$28.96/MWh (NYISO).
+
+\item The renewable floor constraint is binding in all markets: the
+unconstrained economic optimum in every region favors gas-dominated or
+pure-grid solutions.
+
+\item The primary driver of the islanded microgrid's cost disadvantage is
+the requirement to size gas for the worst-case reliability hour, resulting in
+low-utilization firm capacity with large fixed charges.
+
+\item Solar without storage is the least-cost path to a 30\% renewable floor
+in most markets; battery storage adds cost at current \$280/kWh pricing.
+
+\item Regional gas price and construction cost variation creates a $>$50\%
+spread in sLCOE across ISOs for the islanded case.
+\end{itemize}
+
+These findings quantify the energy-cost premium a data center operator accepts
+in exchange for the resilience that full islanding provides.
+As BESS costs continue to fall and FERC Order 2222 matures, the economics of
+islanded operation will improve.
+
+% -----------------------------------------------------------------------
+\section*{Acknowledgment}
+
+The authors thank the instructors and teaching assistants of ELEN 4510:
+Modern \& Clean Energy Systems at Columbia University.
+Open data were provided by NREL (PVWatts V8 API and ATB 2025), Open-Meteo
+(historical weather), the U.S.\ EIA (STEO and gas prices), and the seven
+ISO/RTOs through their public market portals.
+
+% -----------------------------------------------------------------------
+\begin{thebibliography}{00}
+
+\bibitem{b1}
+International Energy Agency, ``Electricity 2024: Analysis and forecast to
+2026,'' IEA Report, Paris, Jan.\ 2024. [Online]. Available:
+\url{https://www.iea.org/reports/electricity-2024}
+
+\bibitem{b2}
+Schneider Electric, ``Data Center Energy Flexibility,'' White Paper
+22511651, 2022. [Online]. Available:
+\url{https://www.se.com/us/en/download/document/22511651_EN}
+
+\bibitem{b3}
+A.\ P.\ Dobos, ``PVWatts Version 5 Manual,'' NREL Tech.\ Rep.\
+NREL/TP-6A20-62641, National Renewable Energy Laboratory, Golden, CO,
+2014.
+
+\bibitem{b4}
+U.S.\ Environmental Protection Agency, ``AP-42: Compilation of Air
+Emissions Factors,'' EPA, Research Triangle Park, NC, 2023. [Online].
+Available: \url{https://www.epa.gov/air-emissions-factors-and-quantification/ap-42}
+
+\bibitem{b5}
+Z.\ Zippenfenig, ``Open-Meteo.com Weather API,'' GitHub, 2023. [Online].
+Available: \url{https://github.com/open-meteo/open-meteo}
+
+\bibitem{b6}
+Lazard, ``Lazard's Levelized Cost of Energy+ Analysis---Version 18.0,''
+Lazard Ltd., New York, Jun.\ 2024. [Online]. Available:
+\url{https://www.lazard.com/research-insights/levelized-cost-of-energyplus}
+
+\bibitem{b7}
+National Renewable Energy Laboratory, ``Annual Technology Baseline 2025,''
+NREL, Golden, CO, 2025. [Online]. Available: \url{https://atb.nrel.gov}
+
+\bibitem{b8}
+U.S.\ Energy Information Administration, ``Short-Term Energy Outlook,''
+EIA, Washington, D.C., Apr.\ 2024. [Online]. Available:
+\url{https://www.eia.gov/outlooks/steo}
+
+\bibitem{b9}
+A.\ Fragkiadaki, D.\ Holland, R.\ Vogeley, and T.\ Mendsaikhan,
+``Datacenter Microgrid Simulation,'' GitHub, 2026. [Online]. Available:
+\url{https://github.com/fragiadaki/datacenter-microgrid-sim}.
+Live dashboard: \url{https://afroditifragiadaki-datacenter-microgrid-sim-dashboard-zfcrhl.streamlit.app/}
+
+\end{thebibliography}
+
+\end{document}
